@@ -3,44 +3,38 @@
 #define __STDC_FORMAT_MACROS
 #endif
 
-/*#include <tbsys.h>*/
-#include <inttypes.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <sys/types.h>
-#include <sys/file.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <sys/mman.h>
-#include <pthread.h>
 
 #include "libmdb_c.hpp"
 #include "ngx_http_tcache_module.h"
 
 
-#define MAX_PROCESS_NUM 50
-#define MAX_KEY_SIZE 1024
-#define MAX_VALUE_SIZE (1<<22)
+#define MAX_KEY_SIZE     1024
+#define MAX_VALUE_SIZE   (1<<22)
 
 
 typedef struct {
-    uint64_t           mem_size;
-    pthread_mutex_t   *mutex;
     int                area;
+    uint64_t           mem_size;
+    uint64_t           quota;
+    uint32_t           key_size;
+    uint32_t           value_size;
+    int                action_type;
+    int                action_mode;
+    char              *log; 
     mdb_t              db;
 } ngx_mdb_t;
 
 
 static ngx_int_t ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache);
 static ngx_http_tcache_node_t * ngx_http_tcache_mdb_get(
-    ngx_http_tcache_t *cache, u_char *key, ngx_http_tcache_ctx_t *ctx);
+    ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 static ngx_http_tcache_node_t * ngx_http_tcache_mdb_create(
-    ngx_http_tcache_t *cache, u_char *key);
+    ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
+static ngx_int_t ngx_http_tcache_mdb_put(
+    ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn,
+    u_char *p, size_t size);
 static void ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache,
-    ngx_http_tcache_node_t *node);
-static void ngx_http_tcache_mdb_expire(ngx_http_tcache_t *cache);
-static void ngx_http_tcache_mdb_force_expire(ngx_http_tcache_t *cache);
+    ngx_http_tcache_node_t *tn);
 static void ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache);
 
 
@@ -49,11 +43,11 @@ ngx_http_tcache_storage_t tcache_mdb = {
     ngx_http_tcache_mdb_create,
     ngx_http_tcache_mdb_get,
     NULL,
-    NULL,
+    ngx_http_tcache_mdb_put,
     NULL,
     ngx_http_tcache_mdb_delete,
-    ngx_http_tcache_mdb_expire,
-    ngx_http_tcache_mdb_force_expire,
+    NULL,
+    NULL,
     ngx_http_tcache_mdb_cleanup,
 };
 
@@ -61,31 +55,15 @@ ngx_http_tcache_storage_t tcache_mdb = {
 static ngx_int_t
 ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 {
-    uint64_t                  quota;
     ngx_mdb_t                *mdb;
     mdb_param_t               params;
-    pthread_mutexattr_t       attr;
 
     mdb = ngx_pcalloc(cache->pool, sizeof(ngx_mdb_t));
     if (mdb == NULL) {
         return NGX_ERROR;
     }
 
-    /*TBSYS_LOGGER.setLogLevel("warn");*/
-    /*if (cache->log && cache->log->file) {*/
-    /*TBSYS_LOGGER.setFileName(cache->log->file->name.data);*/
-    /*}*/
-
-    mdb->mutex = (pthread_mutex_t*)mmap(NULL, sizeof(pthread_mutex_t),
-                                        PROT_READ|PROT_WRITE,
-                                        MAP_SHARED|MAP_ANON, -1, 0);
-    if (mdb->mutex == MAP_FAILED) {
-        return NGX_ERROR;
-    }
-
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutex_init(mdb->mutex, &attr);
+    mdb->log = (char *) cache->log->file->name.data;
 
     ngx_memzero(&params, sizeof(mdb_param_t));
 
@@ -96,8 +74,8 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
     mdb->db = mdb_init(&params);
     mdb->area = 0;
 
-    quota = cache->size >> 1;
-    mdb_set_quota(mdb->db, mdb->area, quota);
+    mdb->quota = cache->size >> 1;
+    mdb_set_quota(mdb->db, mdb->area, mdb->quota);
 
     cache->mdb = mdb;
 
@@ -106,39 +84,107 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, u_char *key,
-    ngx_http_tcache_ctx_t *ctx)
+ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
 {
-    /*ngx_int_t rc;*/
+    int                     expire;
+    ngx_buf_t              *buf;
+    ngx_int_t               rc;
+    ngx_mdb_t              *mdb;
+    data_entry_t            key, value;
+    ngx_http_tcache_node_t *tn;
 
-    /*rc = mdb_get(db, 0, &key, &value, NULL, );*/
+    key.data = (char *) ctx->key;
+    key.size = NGX_HTTP_CACHE_KEY_LEN;
 
-    return NULL;
+    mdb = cache->mdb;
+
+    rc = mdb_get(mdb->db, mdb->area, &key, &value, NULL, &expire);
+    if (rc != 0) {
+        return NULL;
+    }
+
+    tn = ngx_palloc(ctx->pool, sizeof(ngx_http_tcache_node_t));
+    if (tn == NULL) {
+        return NULL;
+    }
+
+    tn->expires = (time_t) expire;
+    tn->length  = value.size;
+
+    if (!lookup && value.size) {
+        buf = &ctx->buffer;
+        
+        buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
+        if (buf->start == NULL) {
+            return tn;
+        }
+
+        buf->last = buf->end = ngx_copy(buf->pos, value.data, tn->length);
+        buf->memory = 1;
+
+        ctx->valid = tn->expires;
+    }
+
+    free(value.data);
+
+    return tn;
 }
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_mdb_create(ngx_http_tcache_t *cache, u_char *key)
+ngx_http_tcache_mdb_create(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 {
-    return NULL;
+    ngx_http_tcache_node_t *tn;
+
+    tn = ngx_palloc(ctx->pool, sizeof(ngx_http_tcache_node_t));
+    if (tn == NULL) {
+        return NULL;
+    }
+
+    tn->key = ctx->key;
+
+    return tn;
+}
+
+
+static ngx_int_t
+ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn,
+                        u_char *p, size_t size)
+{
+    int                     expire, rc;
+    ngx_mdb_t              *mdb;
+    data_entry_t            key, value;
+
+    mdb = cache->mdb;
+
+    key.data = (char *)tn->key;
+    key.size = NGX_HTTP_CACHE_KEY_LEN;
+
+    value.data = (char *)p;
+    value.size = size;
+
+    expire = (int) tn->expires;
+    rc = mdb_put(mdb->db, mdb->area, &key, &value, 0, 1, expire);
+    if (rc != 0) {
+        return NGX_ERROR;
+    }
+
+    return NGX_OK;
 }
 
 
 static void
-ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *node)
+ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn)
 {
-}
+    ngx_mdb_t              *mdb;
+    data_entry_t            key;
 
+    mdb = cache->mdb;
 
-static void
-ngx_http_tcache_mdb_expire(ngx_http_tcache_t *cache)
-{
-}
+    key.data = (char *)tn->key;
+    key.size = NGX_HTTP_CACHE_KEY_LEN;
 
-
-static void
-ngx_http_tcache_mdb_force_expire(ngx_http_tcache_t *cache)
-{
+   (void) mdb_del(mdb->db, mdb->area, &key, 0);
 }
 
 
@@ -149,7 +195,5 @@ ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache)
 
     mdb = cache->mdb;
 
-    pthread_mutex_destroy(mdb->mutex);
-    munmap(mdb->mutex, sizeof(pthread_mutex_t));
     mdb_destroy(mdb->db);
 }

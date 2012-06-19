@@ -21,9 +21,9 @@ typedef struct {
 
 static ngx_int_t ngx_http_tcache_slab_init(ngx_http_tcache_t *cache);
 static ngx_http_tcache_node_t * ngx_http_tcache_slab_get(
-    ngx_http_tcache_t *cache, u_char *key, ngx_http_tcache_ctx_t *ctx);
+    ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 static ngx_http_tcache_node_t * ngx_http_tcache_slab_create(
-    ngx_http_tcache_t *cache, u_char *key);
+    ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
 static u_char * ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache,
     size_t size);
 static ngx_int_t ngx_http_tcache_slab_put(ngx_http_tcache_t *cache,
@@ -141,22 +141,21 @@ ngx_http_tcache_slab_lookup(ngx_http_tcache_t *cache, u_char *key)
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_slab_get(ngx_http_tcache_t *cache, u_char *key,
-    ngx_http_tcache_ctx_t *ctx)
+ngx_http_tcache_slab_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
 {
     ngx_buf_t              *buf;
     ngx_http_tcache_node_t *tn;
 
-    tn = ngx_http_tcache_slab_lookup(cache, key);
+    tn = ngx_http_tcache_slab_lookup(cache, ctx->key);
     if (tn == NULL) {
+        return NULL;
+    }
+
+    if (lookup) {
         return tn;
     }
 
-    if (ctx == NULL) {
-        return tn;
-    }
-
-    buf =  &ctx->buffer;
+    buf = &ctx->buffer;
         
     buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
     if (buf->start == NULL) {
@@ -175,7 +174,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache, u_char *key,
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_slab_create(ngx_http_tcache_t *cache, u_char *key)
+ngx_http_tcache_slab_create(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 {
     ngx_slab_pool_t                   *shpool;
     ngx_http_tcache_node_t            *tn;
@@ -203,9 +202,9 @@ ngx_http_tcache_slab_create(ngx_http_tcache_t *cache, u_char *key)
     }
 
     index =  tn->index;
-    ngx_memcpy((u_char *) &index->node.key, key, sizeof(ngx_rbtree_key_t));
+    ngx_memcpy((u_char *) &index->node.key, ctx->key, sizeof(ngx_rbtree_key_t));
 
-    ngx_memcpy(index->key, &key[sizeof(ngx_rbtree_key_t)],
+    ngx_memcpy(index->key, &ctx->key[sizeof(ngx_rbtree_key_t)],
                NGX_HTTP_CACHE_KEY_LEN - sizeof(ngx_rbtree_key_t));
 
     index->data = tn;

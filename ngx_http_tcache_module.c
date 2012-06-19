@@ -249,7 +249,7 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->get(cache, ctx->key, ctx);
+    node = cache->storage->get(cache, ctx, 0);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
     if (node) {
@@ -395,7 +395,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->get(cache, ctx->key, NULL);
+    node = cache->storage->get(cache, ctx, 1);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
     if (node) {
@@ -488,7 +488,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     if (last && ctx->store) {
         cache = conf->shm_zone->data;
         ngx_shmtx_lock(&cache->shpool->mutex);
-        node = cache->storage->get(cache, ctx->key, NULL);
+        node = cache->storage->get(cache, ctx, 1);
         ngx_shmtx_unlock(&cache->shpool->mutex);
 
         if (node) {
@@ -518,7 +518,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         }
 
         ngx_shmtx_lock(&cache->shpool->mutex);
-        node = cache->storage->create(cache, ctx->key);
+        node = cache->storage->create(cache, ctx);
         if (node == NULL) {
             ngx_shmtx_unlock(&cache->shpool->mutex);
             return NGX_ERROR;
@@ -716,9 +716,12 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     cache->log  = cf->log;
     cache->pool = cf->pool;
 
-    /* The mdb library will take care of all the stuff */
+    /* 
+     * The mdb library will take care of all the stuff.
+     * This shared memory are used for lock purpose
+     * */
     if (cache->storage == &tcache_mdb) {
-        return NGX_CONF_OK;
+        max_size = ngx_pagesize; 
     }
 
     shm_zone = ngx_shared_memory_add(cf, name, (size_t) max_size,

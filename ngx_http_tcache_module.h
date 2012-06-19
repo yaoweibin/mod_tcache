@@ -14,9 +14,9 @@ typedef struct ngx_http_tcache_s ngx_http_tcache_t;
 
 typedef ngx_int_t (*ngx_http_tcache_init_pt) (ngx_http_tcache_t *cache);
 typedef ngx_http_tcache_node_t * (*ngx_http_tcache_get_pt)
-    (ngx_http_tcache_t *cache, u_char *key, ngx_http_tcache_ctx_t *ctx);
+    (ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 typedef ngx_http_tcache_node_t * (*ngx_http_tcache_create_pt)
-    (ngx_http_tcache_t *cache, u_char *key);
+    (ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
 typedef u_char * (*ngx_http_tcache_alloc_pt) (ngx_http_tcache_t *cache,
     size_t size);
 typedef ngx_int_t (*ngx_http_tcache_put_pt) (ngx_http_tcache_t *cache,
@@ -97,6 +97,7 @@ struct ngx_http_tcache_node_s {
     /* storage specific data point */
     void                            *index;
 
+    u_char                          *key;
     time_t                           expires;
     time_t                           last_modified;
     time_t                           date;
