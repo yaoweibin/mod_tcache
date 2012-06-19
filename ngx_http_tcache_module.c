@@ -207,6 +207,8 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache request \"%V\"", &r->uri);
 
+    ctx->pool = r->pool;
+
     if (ngx_http_tcache_headers_init(ctx) != NGX_OK) {
         return NGX_ERROR;
     }
@@ -247,11 +249,10 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->lookup(cache, ctx->key);
+    node = cache->storage->get(cache, ctx->key, ctx);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
     if (node) {
-        ctx->node = node;
         return ngx_http_tcache_send(r, ctx);
     } else {
         /* not found */
@@ -394,7 +395,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->lookup(cache, ctx->key);
+    node = cache->storage->get(cache, ctx->key, NULL);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
     if (node) {
@@ -487,7 +488,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     if (last && ctx->store) {
         cache = conf->shm_zone->data;
         ngx_shmtx_lock(&cache->shpool->mutex);
-        node = cache->storage->lookup(cache, ctx->key);
+        node = cache->storage->get(cache, ctx->key, NULL);
         ngx_shmtx_unlock(&cache->shpool->mutex);
 
         if (node) {
@@ -711,6 +712,14 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
+    cache->size = max_size;
+    cache->log  = cf->log;
+    cache->pool = cf->pool;
+
+    /* The mdb library will take care of all the stuff */
+    if (cache->storage == &tcache_mdb) {
+        return NGX_CONF_OK;
+    }
 
     shm_zone = ngx_shared_memory_add(cf, name, (size_t) max_size,
                                      &ngx_http_tcache_module);
@@ -725,7 +734,6 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    cache->log = cf->log;
     shm_zone->init = ngx_http_tcache_init_zone;
     shm_zone->data = cache;
 

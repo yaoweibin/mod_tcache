@@ -1,3 +1,73 @@
+ngx_feature_name=
+ngx_feature_run=no
+ngx_feature_incs="#include <libmdb_c.hpp>"
+ngx_feature_test="mdb_t mdb;"
+
+if [ -n "$LIBMDB_INC" -o -n "$LIBMDB_LIB" ]; then
+    # explicit set libmdb lib path
+    ngx_feature="libmdb library in directories specified by LIBMDB_INC ($LIBMDB_INC) and LIBMDB_LIB ($LIBMDB_LIB)"
+    ngx_feature_path="$LIBMDB_INC"
+    if [ $NGX_RPATH = YES ]; then
+        ngx_feature_libs="-R$LIBMDB_LIB -L$LIBMDB_LIB -lmdb_c -ltbsys -lrt -lboost_thread"
+    else
+        ngx_feature_libs="-L$LIBMDB_LIB -lmdb_c -ltbsys -lrt -lboost_thread"
+    fi
+    . auto/feature
+else
+    # auto-discovery
+    ngx_feature="libmdb library"
+    ngx_feature_path=
+    ngx_feature_libs="-lmdb"
+    . auto/feature
+
+    if [ $ngx_found = no ]; then
+        # FreeBSD, OpenBSD
+        ngx_feature="libmdb library in /usr/local/"
+        ngx_feature_path="/usr/local/include/"
+        if [ $NGX_RPATH = YES ]; then
+            ngx_feature_libs="-R/usr/local/lib -L/usr/local/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        else
+            ngx_feature_libs="-L/usr/local/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        fi
+        . auto/feature
+    fi
+
+    if [ $ngx_found = no ]; then
+        # NetBSD
+        ngx_feature="libmdb library in /usr/pkg/"
+        ngx_feature_path="/usr/pkg/include/"
+        if [ $NGX_RPATH = YES ]; then
+            ngx_feature_libs="-R/usr/pkg/lib -L/usr/pkg/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        else
+            ngx_feature_libs="-L/usr/pkg/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        fi
+        . auto/feature
+    fi
+
+    if [ $ngx_found = no ]; then
+        # MacPorts
+        ngx_feature="libmdb library in /opt/local/"
+        ngx_feature_path="/opt/local/include/"
+        if [ $NGX_RPATH = YES ]; then
+            ngx_feature_libs="-R/opt/local/lib -L/opt/local/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        else
+            ngx_feature_libs="-L/opt/local/lib -lmdb_c -ltbsys -lrt -lboost_thread"
+        fi
+        . auto/feature
+    fi
+fi
+
+if [ $ngx_found = yes ]; then
+    CORE_INCS="$CORE_INCS $ngx_feature_path"
+    CORE_LIBS="$CORE_LIBS $ngx_feature_libs"
+else
+ cat << END
+ $0: error: the ngx_http_tcache_module requires the libmdb library.
+END
+ exit 1
+fi
+
+
 ngx_addon_name=ngx_http_tcache_module
 HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ngx_http_tcache_module"
 TCACHE_STORAGES="$ngx_addon_dir/storages/ngx_http_tcache_freelist.c $ngx_addon_dir/storages/ngx_http_tcache_mdb.c $ngx_addon_dir/storages/ngx_http_tcache_slab.c"

@@ -7,13 +7,14 @@
 #include <nginx.h>
 
 
+typedef struct ngx_http_tcache_ctx_s ngx_http_tcache_ctx_t;
 typedef struct ngx_http_tcache_node_s ngx_http_tcache_node_t;
 typedef struct ngx_http_tcache_s ngx_http_tcache_t;
 
 
 typedef ngx_int_t (*ngx_http_tcache_init_pt) (ngx_http_tcache_t *cache);
-typedef ngx_http_tcache_node_t * (*ngx_http_tcache_lookup_pt)
-    (ngx_http_tcache_t *cache, u_char *key);
+typedef ngx_http_tcache_node_t * (*ngx_http_tcache_get_pt)
+    (ngx_http_tcache_t *cache, u_char *key, ngx_http_tcache_ctx_t *ctx);
 typedef ngx_http_tcache_node_t * (*ngx_http_tcache_create_pt)
     (ngx_http_tcache_t *cache, u_char *key);
 typedef u_char * (*ngx_http_tcache_alloc_pt) (ngx_http_tcache_t *cache,
@@ -31,7 +32,7 @@ typedef void (*ngx_http_tcache_cleanup_pt) (ngx_http_tcache_t *cache);
 typedef struct {
     ngx_http_tcache_init_pt         init;
     ngx_http_tcache_create_pt       create;
-    ngx_http_tcache_lookup_pt       lookup;
+    ngx_http_tcache_get_pt          get;
     ngx_http_tcache_alloc_pt        alloc;
     ngx_http_tcache_put_pt          put;
     ngx_http_tcache_trim_pt         trim;
@@ -60,9 +61,10 @@ typedef struct {
 } ngx_http_tcache_loc_conf_t;
 
 
-typedef struct {
+struct ngx_http_tcache_ctx_s {
     ngx_flag_t                       no_cache;
     time_t                           valid;
+    time_t                           last_modified;
     off_t                            content_length;
     ngx_str_t                        key_string;
     u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
@@ -78,10 +80,12 @@ typedef struct {
     ngx_chain_t                     *cache_content;
     u_char                          *payload;
 
+    ngx_pool_t                      *pool;
+
     unsigned                         store:1;
 
     ngx_http_tcache_node_t          *node;
-} ngx_http_tcache_ctx_t;
+};
 
 
 typedef struct {
@@ -114,7 +118,13 @@ typedef struct {
 struct ngx_http_tcache_s {
     ngx_slab_pool_t                 *shpool;
     void                            *sh;
+
+    void                            *mdb;
+    ngx_pool_t                      *pool;
+
     ngx_log_t                       *log;
+
+    size_t                           size;
     ngx_http_tcache_storage_t       *storage;
 };
 

@@ -20,8 +20,8 @@ typedef struct {
 
 
 static ngx_int_t ngx_http_tcache_slab_init(ngx_http_tcache_t *cache);
-static ngx_http_tcache_node_t * ngx_http_tcache_slab_lookup(
-    ngx_http_tcache_t *cache, u_char *key);
+static ngx_http_tcache_node_t * ngx_http_tcache_slab_get(
+    ngx_http_tcache_t *cache, u_char *key, ngx_http_tcache_ctx_t *ctx);
 static ngx_http_tcache_node_t * ngx_http_tcache_slab_create(
     ngx_http_tcache_t *cache, u_char *key);
 static u_char * ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache,
@@ -46,7 +46,7 @@ static void ngx_http_tcache_rbtree_insert_value(ngx_rbtree_node_t *temp,
 ngx_http_tcache_storage_t tcache_slab = {
     ngx_http_tcache_slab_init,
     ngx_http_tcache_slab_create,
-    ngx_http_tcache_slab_lookup,
+    ngx_http_tcache_slab_get,
     ngx_http_tcache_slab_alloc,
     ngx_http_tcache_slab_put,
     NULL,
@@ -137,6 +137,40 @@ ngx_http_tcache_slab_lookup(ngx_http_tcache_t *cache, u_char *key)
     }
 
     return NULL;
+}
+
+
+static ngx_http_tcache_node_t *
+ngx_http_tcache_slab_get(ngx_http_tcache_t *cache, u_char *key,
+    ngx_http_tcache_ctx_t *ctx)
+{
+    ngx_buf_t              *buf;
+    ngx_http_tcache_node_t *tn;
+
+    tn = ngx_http_tcache_slab_lookup(cache, key);
+    if (tn == NULL) {
+        return tn;
+    }
+
+    if (ctx == NULL) {
+        return tn;
+    }
+
+    buf =  &ctx->buffer;
+        
+    buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
+    if (buf->start == NULL) {
+        return tn;
+    }
+
+    buf->last = buf->end = ngx_copy(buf->pos, tn->payload, tn->length);
+
+    buf->memory = 1;
+
+    ctx->valid = tn->expires;
+    ctx->last_modified = tn->last_modified;
+
+    return tn;
 }
 
 
