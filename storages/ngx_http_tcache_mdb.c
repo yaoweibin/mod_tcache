@@ -63,6 +63,8 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
         return NGX_ERROR;
     }
 
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cache->log, 0, "tcache mdb init");
+
     mdb->log = (char *) cache->log->file->name.data;
 
     ngx_memzero(&params, sizeof(mdb_param_t));
@@ -71,10 +73,13 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
     params.mdb_path = "/libmdb_shm";
     params.size = cache->size;
 
+    /*fprintf(stderr, "params.size:%"PRIu64"", params.size);*/
+
     mdb->db = mdb_init(&params);
     mdb->area = 0;
 
     mdb->quota = cache->size >> 1;
+
     mdb_set_quota(mdb->db, mdb->area, mdb->quota);
 
     cache->mdb = mdb;
@@ -84,7 +89,8 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
+ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
+    ngx_flag_t lookup)
 {
     int                     expire;
     ngx_buf_t              *buf;

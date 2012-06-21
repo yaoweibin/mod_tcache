@@ -291,21 +291,18 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache send request \"%V\"", &r->uri);
 
-    h = (ngx_http_tcache_content_header_t *) node->payload;
+    h = (ngx_http_tcache_content_header_t *) ctx->buffer.start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache send request header_start: %z, body_start: %z",
-                  h->header_start, h->body_start);
+                   "tcache send request header_start: %z, body_start: %z",
+                   h->header_start, h->body_start);
 
     if (h->header_start >= h->body_start) {
         return NGX_ERROR;
     }
 
-    ctx->buffer.start  = node->payload + h->header_start;
-    ctx->buffer.pos    = node->payload + h->header_start;
-    ctx->buffer.last   = node->payload + h->body_start;
-    ctx->buffer.end    = node->payload + h->body_start;
-    ctx->buffer.mmap = 1;
+    ctx->buffer.pos  = ctx->buffer.start + h->header_start;
+    ctx->buffer.last = ctx->buffer.start + h->body_start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache process headers: \"%*s\"",
@@ -327,10 +324,10 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
         return NGX_ERROR;
     }
 
-    b->start = b->pos = node->payload + h->body_start;
-    b->last = b->end = node->payload + node->length;
+    b->start = b->pos = ctx->buffer.start + h->body_start;
+    b->last = b->end = ctx->buffer.end;
 
-    b->mmap = 1;
+    b->memory = 1;
 
     b->last_buf = (r == r->main) ? 1: 0;
     b->last_in_chain = 1;
@@ -718,7 +715,7 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     /* 
      * The mdb library will take care of all the stuff.
-     * This shared memory are used for lock purpose
+     * This shared memory is only used for lock purpose
      * */
     if (cache->storage == &tcache_mdb) {
         max_size = ngx_pagesize; 
