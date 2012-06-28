@@ -15,12 +15,8 @@ typedef struct ngx_http_tcache_s ngx_http_tcache_t;
 typedef ngx_int_t (*ngx_http_tcache_init_pt) (ngx_http_tcache_t *cache);
 typedef ngx_http_tcache_node_t * (*ngx_http_tcache_get_pt)
     (ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
-typedef ngx_http_tcache_node_t * (*ngx_http_tcache_create_pt)
-    (ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
-typedef u_char * (*ngx_http_tcache_alloc_pt) (ngx_http_tcache_t *cache,
-    size_t size);
 typedef ngx_int_t (*ngx_http_tcache_put_pt) (ngx_http_tcache_t *cache,
-    ngx_http_tcache_node_t *node, u_char *p, size_t size);
+    ngx_http_tcache_ctx_t *ctx);
 typedef ngx_int_t (*ngx_http_tcache_trim_pt) (ngx_http_tcache_t *cache,
     ngx_http_tcache_node_t *node, size_t size);
 typedef void (*ngx_http_tcache_delete_pt) (ngx_http_tcache_t *cache,
@@ -31,9 +27,7 @@ typedef void (*ngx_http_tcache_cleanup_pt) (ngx_http_tcache_t *cache);
 
 typedef struct {
     ngx_http_tcache_init_pt         init;
-    ngx_http_tcache_create_pt       create;
     ngx_http_tcache_get_pt          get;
-    ngx_http_tcache_alloc_pt        alloc;
     ngx_http_tcache_put_pt          put;
     ngx_http_tcache_trim_pt         trim;
     ngx_http_tcache_delete_pt       delete;
@@ -58,6 +52,8 @@ typedef struct {
 
     ngx_uint_t                       use_stale;
 
+    size_t                           default_buffer_size;
+
 } ngx_http_tcache_loc_conf_t;
 
 
@@ -74,10 +70,10 @@ struct ngx_http_tcache_ctx_s {
     ngx_int_t                      (*process_headers)(ngx_http_request_t *r,
                                                       ngx_buf_t *buffer);
     ngx_int_t                      (*store_headers)(ngx_http_request_t *r,
-                                                    ngx_chain_t **chain);
+                                                    ngx_buf_t *buffer);
 
     size_t                           cache_length;
-    ngx_chain_t                     *cache_content;
+    ngx_buf_t                       *cache_content;
     u_char                          *payload;
 
     ngx_pool_t                      *pool;
@@ -131,5 +127,8 @@ struct ngx_http_tcache_s {
 };
 
 extern ngx_module_t  ngx_http_tcache_module;
+
+ngx_buf_t * buffer_append(ngx_buf_t *b, u_char *s, size_t len,
+    ngx_pool_t *pool);
 
 #endif

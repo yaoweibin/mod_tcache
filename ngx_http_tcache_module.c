@@ -23,10 +23,6 @@ static ngx_int_t ngx_http_tcache_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_tcache_body_filter(ngx_http_request_t *r,
     ngx_chain_t *in);
 
-static ngx_int_t
-ngx_http_tcache_deep_copy_chain(ngx_pool_t *pool, ngx_chain_t **chain,
-    ngx_chain_t *in);
-
 static char *ngx_http_tcache_enable(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static char *ngx_http_tcache_key(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -143,6 +139,13 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       ngx_http_tcache_shm_zone,
       NGX_HTTP_MAIN_CONF_OFFSET,
       0,
+      NULL },
+
+    { ngx_string("tcache_store_buffer_size"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_size_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, default_buffer_size),
       NULL },
 
       ngx_null_command
@@ -361,11 +364,43 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
 }
 
 
+ngx_buf_t *
+buffer_append(ngx_buf_t *b, u_char *s, size_t len, ngx_pool_t *pool)
+{
+    u_char      *p;         
+    ngx_uint_t   capacity, size;
+
+    if (len > (size_t) (b->end - b->last)) {
+
+        size = b->last - b->pos;
+
+        capacity = b->end - b->start;
+        capacity *= 1.5;
+        if (capacity < (size + len)) {
+            capacity = size + len;  
+        }
+
+        p = ngx_palloc(pool, capacity);
+        if (p == NULL) {
+            return NULL;
+        }
+
+        b->last = ngx_copy(p, b->pos, size);       
+
+        b->start = b->pos = p;
+        b->end = p + capacity;
+    }
+
+    b->last = ngx_copy(b->last, s, len);
+
+    return b;
+}
+
+
 static ngx_int_t
 ngx_http_tcache_header_filter(ngx_http_request_t *r)
 {
     ngx_int_t                      rc;
-    ngx_chain_t                   *cl;
     ngx_table_elt_t               *h;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
@@ -392,6 +427,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     if (ctx->valid == 0) {
         return ngx_http_next_header_filter(r);
     }
+    ctx->last_modified = r->headers_out.last_modified_time;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache header filter \"%V\", %T", &r->uri, ctx->valid);
@@ -408,21 +444,23 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->store = 1;
     r->filter_need_in_memory = 1;
 
+    ctx->cache_content = ngx_create_temp_buf(r->pool,
+                                             conf->default_buffer_size);
+    if (ctx->cache_content == NULL) {
+        return NGX_ERROR;
+    }
+
     /* Store the response headers */
-    rc = ctx->store_headers(r, &ctx->cache_content);
+    rc = ctx->store_headers(r, ctx->cache_content);
     if (rc != NGX_OK) {
         return rc;
     }
 
-    for (cl = ctx->cache_content; cl; cl = cl->next) {
+    ctx->cache_length = ngx_buf_size(ctx->cache_content);
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "tcache header filter buffer: %z", ngx_buf_size(cl->buf));
-
-        if (ngx_buf_in_memory(cl->buf)) {
-            ctx->cache_length += ngx_buf_size(cl->buf);
-        }
-    }
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "tcache header filter buffer: %z",
+                   ngx_buf_size(ctx->cache_content));
 
     h = ngx_list_push(&r->headers_out.headers);
     if (h == NULL) {
@@ -442,8 +480,8 @@ static ngx_int_t
 ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 {
     size_t                         len;
-    u_char                        *p;
     ngx_int_t                      last, rc;
+    ngx_buf_t                     *b;
     ngx_chain_t                   *cl;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
@@ -466,26 +504,26 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     last = 0;
     for (cl = in; cl; cl = cl->next) {
-        if (ngx_buf_in_memory(cl->buf)) {
-            len = ngx_buf_size(cl->buf);
+        b = cl->buf;
+
+        if (ngx_buf_in_memory(b)) {
+            len = ngx_buf_size(b);
 
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                            "tcache body filter buffer: %z", len);
+
+            if (buffer_append(ctx->cache_content, b->pos, len, r->pool) == NULL) {
+                return NGX_ERROR;
+            }
 
             ctx->cache_length += len;
             ctx->content_length += len;
         }
 
-        if (cl->buf->last_buf) {
+        if (b->last_buf) {
             last = 1;
             break;
         }
-    }
-
-    /* store the response chains to the cache pool */
-    rc = ngx_http_tcache_deep_copy_chain(r->pool, &ctx->cache_content, in);
-    if (rc != NGX_OK) {
-        ctx->store = 0;
     }
 
     if (last && ctx->store) {
@@ -498,43 +536,19 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
             return ngx_http_next_body_filter(r, in);
         }
 
-        ctx->payload = ngx_palloc(r->pool, ctx->cache_length);
-        if (ctx->payload == NULL) {
-            return NGX_ERROR;
-        }
-
-        p = ctx->payload;
-        for (cl = ctx->cache_content; cl; cl = cl->next) {
-            len = ngx_buf_size(cl->buf);
-            if (ngx_buf_in_memory(cl->buf) && len) {
-                p = ngx_copy(p, cl->buf->pos, len);
-            }
-        }
-
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                        "tcache body total single buffer: %z", ctx->cache_length);
 
-        if (p != (ctx->payload + ctx->cache_length)) {
+        if ((size_t)ngx_buf_size(ctx->cache_content) != ctx->cache_length) {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "tcache invalid cache_length");
             return ngx_http_next_body_filter(r, in);
         }
 
+        ctx->payload = ctx->cache_content->pos;
+
         ngx_shmtx_lock(&cache->shpool->mutex);
-        node = cache->storage->create(cache, ctx);
-        if (node == NULL) {
-            ngx_shmtx_unlock(&cache->shpool->mutex);
-            return NGX_ERROR;
-        }
-
-        ctx->node = node;
-        node->updating = 1;
-        node->date = ngx_time();
-        node->expires =  node->date + ctx->valid;
-        node->last_modified = r->headers_out.last_modified_time;
-
-        rc = cache->storage->put(cache, node, ctx->payload,
-                                 ctx->cache_length);
+        rc = cache->storage->put(cache, ctx);
         ngx_shmtx_unlock(&cache->shpool->mutex);
 
         if (rc != NGX_OK) {
@@ -543,54 +557,6 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     return ngx_http_next_body_filter(r, in);
-}
-
-
-static ngx_int_t
-ngx_http_tcache_deep_copy_chain(ngx_pool_t *pool, ngx_chain_t **chain,
-    ngx_chain_t *in)
-{
-    size_t           len;
-    ngx_chain_t     *cl, **ll;
-
-    ll = chain;
-
-    for (cl = *chain; cl; cl = cl->next) {
-        ll = &cl->next;
-    }
-
-    while (in) {
-        cl = ngx_alloc_chain_link(pool);
-        if (cl == NULL) {
-            return NGX_ERROR;
-        }
-
-        if (ngx_buf_special(in->buf)) {
-            cl->buf = in->buf;
-
-        } else {
-
-            if (ngx_buf_in_memory(in->buf)) {
-                len = ngx_buf_size(in->buf);
-                cl->buf = ngx_create_temp_buf(pool, len);
-                if (cl->buf == NULL) {
-                    return NGX_ERROR;
-                }
-
-                cl->buf->last = ngx_copy(cl->buf->pos, in->buf->pos, len);
-            } else {
-                return NGX_ERROR;
-            }
-        }
-
-        *ll = cl;
-        ll = &cl->next;
-        in = in->next;
-    }
-
-    *ll = NULL;
-
-    return NGX_OK;
 }
 
 
@@ -794,6 +760,8 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     conf->enable = NGX_CONF_UNSET;
     conf->valid = NGX_CONF_UNSET_PTR;
     conf->bypass = NGX_CONF_UNSET_PTR;
+    conf->default_expires = NGX_CONF_UNSET;
+    conf->default_buffer_size = NGX_CONF_UNSET;
 
     return conf;
 }
@@ -835,6 +803,9 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
     ngx_conf_merge_ptr_value(conf->valid, prev->valid, NULL);
     ngx_conf_merge_ptr_value(conf->bypass, prev->bypass, NULL);
+    ngx_conf_merge_sec_value(conf->default_expires, prev->default_expires, 60);
+    ngx_conf_merge_size_value(conf->default_buffer_size,
+                              prev->default_buffer_size, 128 * 1024);
 
     ngx_conf_merge_bitmask_value(conf->use_stale, prev->use_stale,
                                  (NGX_CONF_BITMASK_SET
@@ -1002,8 +973,6 @@ ngx_http_tcache_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     cache->shpool = shpool;
 
 init:
-
-    /*ngx_sleep(60);*/
 
     ngx_shmtx_lock(&cache->shpool->mutex);
     if (cache->storage->init(cache) != NGX_OK) {

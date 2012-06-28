@@ -26,8 +26,8 @@ static ngx_http_tcache_node_t * ngx_http_tcache_slab_create(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
 static u_char * ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache,
     size_t size);
-static ngx_int_t ngx_http_tcache_slab_put(ngx_http_tcache_t *cache,
-    ngx_http_tcache_node_t *tn, u_char *data, size_t size);
+static ngx_int_t ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, 
+    ngx_http_tcache_ctx_t *ctx);
 static void ngx_http_tcache_slab_delete(ngx_http_tcache_t *cache,
     ngx_http_tcache_node_t *tn);
 static void ngx_http_tcache_slab_expire(ngx_http_tcache_t *cache);
@@ -45,9 +45,7 @@ static void ngx_http_tcache_rbtree_insert_value(ngx_rbtree_node_t *temp,
 
 ngx_http_tcache_storage_t tcache_slab = {
     ngx_http_tcache_slab_init,
-    ngx_http_tcache_slab_create,
     ngx_http_tcache_slab_get,
-    ngx_http_tcache_slab_alloc,
     ngx_http_tcache_slab_put,
     NULL,
     ngx_http_tcache_slab_delete,
@@ -141,7 +139,8 @@ ngx_http_tcache_slab_lookup(ngx_http_tcache_t *cache, u_char *key)
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_slab_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
+ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
+    ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
 {
     ngx_buf_t              *buf;
     ngx_http_tcache_node_t *tn;
@@ -249,16 +248,27 @@ ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache, size_t size)
 
 
 static ngx_int_t
-ngx_http_tcache_slab_put(ngx_http_tcache_t *cache,
-    ngx_http_tcache_node_t *tn, u_char *data, size_t size)
+ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 {
-    tn->payload = ngx_http_tcache_slab_alloc(cache, size);
+    ngx_http_tcache_node_t            *tn;
+
+    tn = ngx_http_tcache_slab_create(cache, ctx);
+    if (tn == NULL) {
+        return NGX_ERROR;
+    }
+
+    ctx->node = tn;
+    tn->date = ngx_time();
+    tn->expires = tn->date + ctx->valid;
+    tn->last_modified = ctx->last_modified;
+
+    tn->length = ctx->cache_length;
+    tn->payload = ngx_http_tcache_slab_alloc(cache, tn->length);
     if (tn->payload == NULL) {
         return NGX_ERROR;
     }
 
-    tn->length = size;
-    (void) ngx_copy(tn->payload, data, size); 
+    (void) ngx_copy(tn->payload, ctx->payload, tn->length); 
 
     return NGX_OK;
 }

@@ -11,7 +11,7 @@ static ngx_int_t ngx_http_tcache_copy_header_line(ngx_http_request_t *r,
     ngx_table_elt_t *h, ngx_uint_t offset);
 
 static ngx_int_t ngx_http_tcache_store_headers(ngx_http_request_t *r,
-    ngx_chain_t **chain);
+    ngx_buf_t *buffer);
 
 static ngx_int_t ngx_http_tcache_process_content_type(ngx_http_request_t *r,
     ngx_table_elt_t *h, ngx_uint_t offset);
@@ -373,13 +373,13 @@ ngx_http_tcache_copy_header_line(ngx_http_request_t *r, ngx_table_elt_t *h,
 
 
 static ngx_int_t
-ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_chain_t **chain)
+ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
 {
     size_t                                 len;
-    ngx_buf_t                             *b, *sb;
+    u_char                                *header_start, *body_start;
+    ngx_buf_t                             *b;
     ngx_str_t                             *status_line;
     ngx_uint_t                            status, i;
-    ngx_chain_t                          *cl;
     ngx_list_part_t                      *part;
     ngx_table_elt_t                      *header;
     ngx_http_tcache_content_header_t     *ch;
@@ -395,7 +395,9 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_chain_t **chain)
         }
     }
 
-    len = sizeof("HTTP/1.x ") - 1 + sizeof(CRLF) - 1
+    len = sizeof(ngx_http_tcache_content_header_t);
+
+    len += sizeof("HTTP/1.x ") - 1 + sizeof(CRLF) - 1
           /* the end of the header */
           + sizeof(CRLF) - 1;
 
@@ -499,10 +501,20 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_chain_t **chain)
                + sizeof(CRLF) - 1;
     }
 
-    b = ngx_create_temp_buf(r->pool, len);
-    if (b == NULL) {
+    b = buffer;
+    
+    if ((size_t)(b->end - b->last) < len) {
+
+        ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
+                      "tcache store headers, not enough buffer.",
+                      ngx_buf_size(b), len);
+
         return NGX_ERROR;
     }
+
+    b->last += sizeof(ngx_http_tcache_content_header_t);
+
+    header_start = b->last;
 
     /* "HTTP/1.x " */
     b->last = ngx_cpymem(b->last, "HTTP/1.1 ", sizeof("HTTP/1.x ") - 1);
@@ -581,39 +593,16 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_chain_t **chain)
     /* the end of HTTP header */
     *b->last++ = CR; *b->last++ = LF;
 
+    body_start = b->last;
+
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache store headers \"%*s\"", (size_t) (b->last - b->pos),
-                   b->pos);
+                   "tcache store headers \"%*s\"",
+                   (size_t)(body_start - header_start),
+                   header_start);
 
-    sb = ngx_create_temp_buf(r->pool, sizeof(ngx_http_tcache_content_header_t));
-    if (sb == NULL) {
-        return NGX_ERROR;
-    }
-
-    ch = (ngx_http_tcache_content_header_t *) sb->pos;
-    ch->header_start = sizeof(ngx_http_tcache_content_header_t);
-    ch->body_start = ch->header_start + ngx_buf_size(b);
-
-    sb->last = sb->pos + ch->header_start ;
-
-    cl = ngx_alloc_chain_link(r->pool);
-    if (cl == NULL) {
-        return NGX_ERROR;
-    }
-
-    cl->buf = sb;
-    cl->next = NULL;
-
-    *chain = cl;
-
-    cl = ngx_alloc_chain_link(r->pool);
-    if (cl == NULL) {
-        return NGX_ERROR;
-    }
-
-    cl->buf = b;
-    cl->next = NULL;
-    (*chain)->next = cl;
+    ch = (ngx_http_tcache_content_header_t *) b->pos;
+    ch->header_start = header_start - b->pos;
+    ch->body_start = body_start - b->pos;
 
     return NGX_OK;
 }

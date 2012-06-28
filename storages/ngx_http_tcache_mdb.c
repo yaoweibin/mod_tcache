@@ -29,11 +29,8 @@ typedef struct {
 static ngx_int_t ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache);
 static ngx_http_tcache_node_t * ngx_http_tcache_mdb_get(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
-static ngx_http_tcache_node_t * ngx_http_tcache_mdb_create(
-    ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
-static ngx_int_t ngx_http_tcache_mdb_put(
-    ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn,
-    u_char *p, size_t size);
+static ngx_int_t ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache,
+    ngx_http_tcache_ctx_t *ctx);
 static void ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache,
     ngx_http_tcache_node_t *tn);
 static void ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache);
@@ -41,9 +38,7 @@ static void ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache);
 
 ngx_http_tcache_storage_t tcache_mdb = {
     ngx_http_tcache_mdb_init,
-    ngx_http_tcache_mdb_create,
     ngx_http_tcache_mdb_get,
-    NULL,
     ngx_http_tcache_mdb_put,
     NULL,
     ngx_http_tcache_mdb_delete,
@@ -183,25 +178,8 @@ ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
 }
 
 
-static ngx_http_tcache_node_t *
-ngx_http_tcache_mdb_create(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
-{
-    ngx_http_tcache_node_t *tn;
-
-    tn = ngx_palloc(ctx->pool, sizeof(ngx_http_tcache_node_t));
-    if (tn == NULL) {
-        return NULL;
-    }
-
-    tn->key = ctx->key;
-
-    return tn;
-}
-
-
 static ngx_int_t
-ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn,
-                        u_char *p, size_t size)
+ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 {
     int                     expire, rc;
     ngx_mdb_t              *mdb;
@@ -209,13 +187,13 @@ ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn,
 
     mdb = cache->mdb;
 
-    key.data = (char *)tn->key;
+    key.data = (char *)ctx->key;
     key.size = NGX_HTTP_CACHE_KEY_LEN;
 
-    value.data = (char *)p;
-    value.size = size;
+    value.data = (char *)ctx->payload;
+    value.size = ctx->cache_length;
 
-    expire = (int) tn->expires;
+    expire = (int) ctx->valid + ngx_time();
     rc = mdb_put(mdb->db, mdb->area, &key, &value, 0, 1, expire);
     if (rc != 0) {
         return NGX_ERROR;

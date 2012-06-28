@@ -24,6 +24,4 @@ ngx_http_tcache_storage_t tcache_freelist = {
     NULL,
     NULL,
     NULL,
-    NULL,
-    NULL,
 };
