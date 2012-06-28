@@ -13,7 +13,7 @@ typedef struct ngx_http_tcache_s ngx_http_tcache_t;
 
 
 typedef ngx_int_t (*ngx_http_tcache_init_pt) (ngx_http_tcache_t *cache);
-typedef ngx_http_tcache_node_t * (*ngx_http_tcache_get_pt)
+typedef ngx_int_t (*ngx_http_tcache_get_pt)
     (ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 typedef ngx_int_t (*ngx_http_tcache_put_pt) (ngx_http_tcache_t *cache,
     ngx_http_tcache_ctx_t *ctx);

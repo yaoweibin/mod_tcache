@@ -20,7 +20,7 @@ typedef struct {
 
 
 static ngx_int_t ngx_http_tcache_slab_init(ngx_http_tcache_t *cache);
-static ngx_http_tcache_node_t * ngx_http_tcache_slab_get(
+static ngx_int_t ngx_http_tcache_slab_get(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 static ngx_http_tcache_node_t * ngx_http_tcache_slab_create(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx);
@@ -138,7 +138,7 @@ ngx_http_tcache_slab_lookup(ngx_http_tcache_t *cache, u_char *key)
 }
 
 
-static ngx_http_tcache_node_t *
+static ngx_int_t
 ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
     ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup)
 {
@@ -147,28 +147,26 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
     tn = ngx_http_tcache_slab_lookup(cache, ctx->key);
     if (tn == NULL) {
-        return NULL;
+        return NGX_DECLINED;
     }
 
     if (lookup) {
-        return tn;
+        return NGX_OK;
     }
 
+    ctx->node = tn;
+
     buf = &ctx->buffer;
-        
+
     buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
     if (buf->start == NULL) {
-        return tn;
+        return NGX_ERROR;
     }
 
     buf->last = buf->end = ngx_copy(buf->pos, tn->payload, tn->length);
-
     buf->memory = 1;
 
-    ctx->valid = tn->expires;
-    ctx->last_modified = tn->last_modified;
-
-    return tn;
+    return NGX_OK;
 }
 
 

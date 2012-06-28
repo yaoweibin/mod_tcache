@@ -27,7 +27,7 @@ typedef struct {
 
 
 static ngx_int_t ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache);
-static ngx_http_tcache_node_t * ngx_http_tcache_mdb_get(
+static ngx_int_t ngx_http_tcache_mdb_get(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
 static ngx_int_t ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache,
     ngx_http_tcache_ctx_t *ctx);
@@ -129,7 +129,7 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 }
 
 
-static ngx_http_tcache_node_t *
+static ngx_int_t
 ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
     ngx_flag_t lookup)
 {
@@ -138,7 +138,6 @@ ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
     ngx_int_t               rc;
     ngx_mdb_t              *mdb;
     data_entry_t            key, value;
-    ngx_http_tcache_node_t *tn;
 
     key.data = (char *) ctx->key;
     key.size = NGX_HTTP_CACHE_KEY_LEN;
@@ -147,34 +146,31 @@ ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
 
     rc = mdb_get(mdb->db, mdb->area, &key, &value, NULL, &expire);
     if (rc != 0) {
-        return NULL;
+        return NGX_DECLINED;
     }
 
-    tn = ngx_palloc(ctx->pool, sizeof(ngx_http_tcache_node_t));
-    if (tn == NULL) {
-        return NULL;
+    rc = NGX_OK;
+
+    if (lookup || value.size == 0) {
+        goto end;
     }
 
-    tn->expires = (time_t) expire;
-    tn->length  = value.size;
+    buf = &ctx->buffer;
 
-    if (!lookup && value.size) {
-        buf = &ctx->buffer;
-        
-        buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
-        if (buf->start == NULL) {
-            return tn;
-        }
-
-        buf->last = buf->end = ngx_copy(buf->pos, value.data, tn->length);
-        buf->memory = 1;
-
-        ctx->valid = tn->expires;
+    buf->pos = buf->start = ngx_palloc(ctx->pool, value.size);
+    if (buf->start == NULL) {
+        rc = NGX_ERROR;
+        goto end;
     }
+
+    buf->last = buf->end = ngx_copy(buf->pos, value.data, value.size);
+    buf->memory = 1;
+
+end:
 
     free(value.data);
 
-    return tn;
+    return rc;
 }
 
 

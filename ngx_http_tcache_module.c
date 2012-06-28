@@ -198,10 +198,10 @@ static ngx_http_variable_t ngx_http_tcache_variables[] = {
 static ngx_int_t
 ngx_http_tcache_access_handler(ngx_http_request_t *r)
 {
+    ngx_int_t                      rc;
     ngx_str_t                      cache_key;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
-    ngx_http_tcache_node_t        *node;
     ngx_http_tcache_loc_conf_t    *conf;
 
     ctx = ngx_pcalloc(r->pool, sizeof(ngx_http_tcache_ctx_t));
@@ -258,14 +258,14 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->get(cache, ctx, 0);
+    rc = cache->storage->get(cache, ctx, 0);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
-    if (node) {
+    if (rc == NGX_OK) {
         return ngx_http_tcache_send(r, ctx);
     } else {
         /* not found */
-        return NGX_DECLINED;
+        return rc;
     }
 
 bypass:
@@ -404,7 +404,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_table_elt_t               *h;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
-    ngx_http_tcache_node_t        *node;
     ngx_http_tcache_loc_conf_t    *conf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
@@ -434,10 +433,10 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
-    node = cache->storage->get(cache, ctx, 1);
+    rc = cache->storage->get(cache, ctx, 1);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
-    if (node) {
+    if (rc == NGX_OK) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -485,7 +484,6 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ngx_chain_t                   *cl;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
-    ngx_http_tcache_node_t        *node;
     ngx_http_tcache_loc_conf_t    *conf;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
@@ -529,10 +527,10 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     if (last && ctx->store) {
         cache = conf->shm_zone->data;
         ngx_shmtx_lock(&cache->shpool->mutex);
-        node = cache->storage->get(cache, ctx, 1);
+        rc = cache->storage->get(cache, ctx, 1);
         ngx_shmtx_unlock(&cache->shpool->mutex);
 
-        if (node) {
+        if (rc == NGX_OK) {
             return ngx_http_next_body_filter(r, in);
         }
 
