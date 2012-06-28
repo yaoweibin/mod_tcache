@@ -56,3 +56,47 @@ TCACHE: MISS
     GET /
 --- response_headers
 TCACHE: HIT
+
+=== TEST 3: tcache module with mdb first time
+
+--- http_config
+    tcache_shm_zone test_mdb storage=mdb size=256M;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location / {
+        tcache test_mdb;
+        tcache_valid 200    1h;
+
+        proxy_set_header Host 'www.taobao.com';
+        proxy_pass http://backends;
+    }
+--- request
+    GET /
+--- response_headers
+TCACHE: MISS
+
+=== TEST 4: tcache module with mdb second time
+
+--- http_config
+    tcache_shm_zone test_mdb storage=mdb size=256M;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location / {
+        tcache test_mdb;
+        tcache_valid 200    1h;
+
+        proxy_set_header Host 'www.taobao.com';
+        proxy_pass http://backends;
+    }
+--- request
+    GET /
+--- response_headers
+TCACHE: HIT

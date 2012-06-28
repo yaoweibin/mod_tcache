@@ -20,6 +20,7 @@ typedef struct {
     uint32_t           value_size;
     int                action_type;
     int                action_mode;
+    char              *path; 
     char              *log; 
     mdb_t              db;
 } ngx_mdb_t;
@@ -55,6 +56,8 @@ ngx_http_tcache_storage_t tcache_mdb = {
 static ngx_int_t
 ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 {
+    size_t                    len;
+    u_char                   *name, *path;
     ngx_mdb_t                *mdb;
     mdb_param_t               params;
 
@@ -69,11 +72,54 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 
     ngx_memzero(&params, sizeof(mdb_param_t));
 
-    params.mdb_type = "mdb_shm";
-    params.mdb_path = "/libmdb_shm";
-    params.size = cache->size;
+    len = sizeof("libmdb_") - 1 + cache->name.len;
 
-    /*fprintf(stderr, "params.size:%"PRIu64"", params.size);*/
+    name = ngx_pcalloc(cache->pool, len + 1);
+    if (name == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_snprintf(name, len, "%s%V", (u_char *) "libmdb_", &cache->name);
+
+    len += sizeof("/dev/shm/") - 1;
+
+    path = ngx_pcalloc(cache->pool, len + 1);
+    if (path == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_snprintf(path, len, "/dev/shm/%s", name);
+
+    mdb->path = (char *)path;
+
+#if NGX_LINUX && 0
+    ngx_fd_t                  fd;
+    struct flock              fl;
+
+    fd = open((char *)path, O_RDWR);
+    if (fd > 0) {
+        fl.l_start = 0;
+        fl.l_len = 0;
+        fl.l_pid = 0;
+        fl.l_type = F_WRLCK;
+        fl.l_whence = SEEK_SET;
+
+        /* record lock can't inherit after fork, sucks */
+        if (fcntl(fd, F_SETLK, &fl) == -1) {
+            ngx_log_error(NGX_LOG_EMERG, cache->log, 0,
+                          "tcache error: the shared memory \"%s\" is using",
+                          name);
+
+            return NGX_ERROR;
+        }
+    }
+#endif
+
+    ngx_delete_file(mdb->path);
+
+    params.mdb_type = "mdb_shm";
+    params.mdb_path = (char *) name;
+    params.size = cache->size;
 
     mdb->db = mdb_init(&params);
     mdb->area = 0;
@@ -201,5 +247,11 @@ ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache)
 
     mdb = cache->mdb;
 
-    mdb_destroy(mdb->db);
+    if (mdb->path) {
+        ngx_delete_file(mdb->path);
+    }
+
+    if (mdb && mdb->db) {
+        mdb_destroy(mdb->db);
+    }
 }

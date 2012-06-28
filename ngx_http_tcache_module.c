@@ -4,7 +4,7 @@
 #include "ngx_http_tcache_headers.h"
 
 
-#define DEFAULT_KEY "$scheme$proxy_host$request_uri"
+#define DEFAULT_KEY "$scheme$host$request_uri"
 
 
 typedef struct {
@@ -47,6 +47,8 @@ static ngx_int_t ngx_http_tcache_init_zone(ngx_shm_zone_t *shm_zone,
 
 static void * ngx_http_tcache_create_main_conf(ngx_conf_t *cf);
 static char *ngx_http_tcache_init_main_conf(ngx_conf_t *cf, void *conf);
+
+static void ngx_http_tcache_exit_process(ngx_cycle_t *cycle);
 
 
 extern ngx_http_tcache_storage_t tcache_slab;
@@ -172,7 +174,7 @@ ngx_module_t  ngx_http_tcache_module = {
     NULL,                                  /* init process */
     NULL,                                  /* init thread */
     NULL,                                  /* exit thread */
-    NULL,                                  /* exit process */
+    ngx_http_tcache_exit_process,          /* exit process */
     NULL,                                  /* exit master */
     NGX_MODULE_V1_PADDING
 };
@@ -245,6 +247,10 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
     }
 
     ctx->key_string = cache_key;
+
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "tcache request key \"%V\"", &ctx->key_string);
+
     ngx_http_tcache_create_key(ctx, &cache_key);
 
     cache = conf->shm_zone->data;
@@ -657,13 +663,14 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     value = cf->args->elts;
 
     name = &value[1];
-    max_size = 128 * 1024 * 1024;
+    max_size = 256 * 1024 * 1024;
 
     cache = ngx_pcalloc(cf->pool, sizeof(ngx_http_tcache_t));
     if (cache == NULL) {
         return NGX_CONF_ERROR;
     }
 
+    cache->name = value[1];
     cache->storage = &tcache_slab;
 
     for (i = 2; i < cf->args->nelts; i++) {
@@ -907,6 +914,13 @@ ngx_http_tcache_init_main_conf(ngx_conf_t *cf, void *conf)
 }
 
 
+static void
+ngx_http_tcache_exit_process(ngx_cycle_t *cycle)
+{
+    /* TODO: cleanup the mdb */
+}
+
+
 static ngx_int_t
 ngx_http_tcache_add_variables(ngx_conf_t *cf)
 {
@@ -967,14 +981,29 @@ ngx_http_tcache_init_zone(ngx_shm_zone_t *shm_zone, void *data)
     ocache = data;
 
     if (ocache) {
-        cache->sh = ocache->sh;
         cache->shpool = ocache->shpool;
-        return NGX_OK;
+        cache->sh = ocache->sh;
+
+        if (ocache->storage == &tcache_mdb) {
+            ngx_shmtx_lock(&ocache->shpool->mutex);
+            ocache->storage->cleanup(ocache);
+            ngx_shmtx_unlock(&ocache->shpool->mutex);
+        }
+
+        if (cache->storage == &tcache_mdb) {
+            goto init;
+        }
+        else {
+            return NGX_OK;
+        }
     }
 
     shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
-
     cache->shpool = shpool;
+
+init:
+
+    /*ngx_sleep(60);*/
 
     ngx_shmtx_lock(&cache->shpool->mutex);
     if (cache->storage->init(cache) != NGX_OK) {

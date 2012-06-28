@@ -117,6 +117,7 @@ typedef struct {
 
 
 struct ngx_http_tcache_s {
+    ngx_str_t                        name;
     ngx_slab_pool_t                 *shpool;
     void                            *sh;
 
