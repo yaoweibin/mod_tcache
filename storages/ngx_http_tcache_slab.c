@@ -155,16 +155,17 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
     }
 
     ctx->node = tn;
+    ctx->cache_length = tn->length;
 
-    buf = &ctx->buffer;
-
-    buf->pos = buf->start = ngx_palloc(ctx->pool, tn->length);
-    if (buf->start == NULL) {
+    buf = ngx_create_temp_buf(ctx->pool, tn->length);
+    if (buf == NULL) {
         return NGX_ERROR;
     }
 
-    buf->last = buf->end = ngx_copy(buf->pos, tn->payload, tn->length);
-    buf->memory = 1;
+    buf->last = ngx_copy(buf->pos, tn->payload, tn->length);
+
+    ctx->cache_content = buf;
+    ctx->payload = buf->pos;
 
     return NGX_OK;
 }

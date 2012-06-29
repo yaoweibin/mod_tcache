@@ -64,6 +64,8 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cache->log, 0, "tcache mdb init");
 
     mdb->log = (char *) cache->log->file->name.data;
+    mdb_log_file(mdb->log);
+    mdb_log_level("error");
 
     ngx_memzero(&params, sizeof(mdb_param_t));
 
@@ -144,6 +146,15 @@ ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
 
     mdb = cache->mdb;
 
+    if (lookup) {
+        rc = mdb_lookup(mdb->db, mdb->area, &key);
+        if (rc == true) {
+            return NGX_OK;
+        } else {
+            return NGX_DECLINED;
+        }
+    }
+
     rc = mdb_get(mdb->db, mdb->area, &key, &value, NULL, &expire);
     if (rc != 0) {
         return NGX_DECLINED;
@@ -151,20 +162,22 @@ ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
 
     rc = NGX_OK;
 
-    if (lookup || value.size == 0) {
-        goto end;
+    if (value.size == 0) {
+        return rc;
     }
 
-    buf = &ctx->buffer;
+    ctx->cache_length = value.size;
 
-    buf->pos = buf->start = ngx_palloc(ctx->pool, value.size);
-    if (buf->start == NULL) {
+    buf = ngx_create_temp_buf(ctx->pool, value.size);
+    if (buf == NULL) {
         rc = NGX_ERROR;
         goto end;
     }
 
     buf->last = buf->end = ngx_copy(buf->pos, value.data, value.size);
-    buf->memory = 1;
+
+    ctx->cache_content = buf;
+    ctx->payload = buf->pos;
 
 end:
 

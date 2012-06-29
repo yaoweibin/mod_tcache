@@ -65,8 +65,6 @@ struct ngx_http_tcache_ctx_s {
     ngx_str_t                        key_string;
     u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
 
-    ngx_buf_t                        buffer;
-
     ngx_int_t                      (*process_headers)(ngx_http_request_t *r,
                                                       ngx_buf_t *buffer);
     ngx_int_t                      (*store_headers)(ngx_http_request_t *r,

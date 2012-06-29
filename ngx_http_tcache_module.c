@@ -258,6 +258,7 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
+    /* The data are filled in the ctx->cache_content */
     rc = cache->storage->get(cache, ctx, 0);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
@@ -290,7 +291,7 @@ static ngx_int_t
 ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
 {
     ngx_int_t                              rc;
-    ngx_buf_t                             *b;
+    ngx_buf_t                             *b, *cb;
     ngx_chain_t                            out;
     ngx_http_tcache_node_t                *node;
     ngx_http_tcache_content_header_t      *h;
@@ -300,7 +301,8 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache send request \"%V\"", &r->uri);
 
-    h = (ngx_http_tcache_content_header_t *) ctx->buffer.start;
+    cb = ctx->cache_content;
+    h = (ngx_http_tcache_content_header_t *) cb->start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "tcache send request header_start: %z, body_start: %z",
@@ -310,20 +312,19 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
         return NGX_ERROR;
     }
 
-    ctx->buffer.pos  = ctx->buffer.start + h->header_start;
-    ctx->buffer.last = ctx->buffer.start + h->body_start;
+    cb->pos  = cb->start + h->header_start;
+    cb->last = cb->start + h->body_start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache process headers: \"%*s\"",
-                  ctx->buffer.last - ctx->buffer.pos, ctx->buffer.pos);
+                  cb->last - cb->pos, cb->pos);
 
-    rc = ctx->process_headers(r, &ctx->buffer);
+    rc = ctx->process_headers(r, cb);
     if (rc != NGX_OK) {
         return rc;
     }
 
     rc = ngx_http_send_header(r);
-
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;
     }
@@ -333,8 +334,8 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
         return NGX_ERROR;
     }
 
-    b->start = b->pos = ctx->buffer.start + h->body_start;
-    b->last = b->end = ctx->buffer.end;
+    b->start = b->pos = cb->start + h->body_start;
+    b->last = b->end = cb->end;
 
     b->memory = 1;
 
@@ -375,7 +376,7 @@ buffer_append(ngx_buf_t *b, u_char *s, size_t len, ngx_pool_t *pool)
         size = b->last - b->pos;
 
         capacity = b->end - b->start;
-        capacity *= 1.5;
+        capacity <<= 2;
         if (capacity < (size + len)) {
             capacity = size + len;  
         }
@@ -436,6 +437,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     rc = cache->storage->get(cache, ctx, 1);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
+    /* If we find the record, we don't need insert it again. */
     if (rc == NGX_OK) {
         return ngx_http_next_header_filter(r);
     }
@@ -443,6 +445,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->store = 1;
     r->filter_need_in_memory = 1;
 
+    /* Prealloc a large buffer to store the whole response, default: 128KB */
     ctx->cache_content = ngx_create_temp_buf(r->pool,
                                              conf->default_buffer_size);
     if (ctx->cache_content == NULL) {
@@ -458,8 +461,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->cache_length = ngx_buf_size(ctx->cache_content);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache header filter buffer: %z",
-                   ngx_buf_size(ctx->cache_content));
+                   "tcache header filter buffer: %z", ctx->cache_length);
 
     h = ngx_list_push(&r->headers_out.headers);
     if (h == NULL) {
