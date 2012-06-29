@@ -58,7 +58,6 @@ typedef struct {
 
 
 struct ngx_http_tcache_ctx_s {
-    ngx_flag_t                       no_cache;
     time_t                           valid;
     time_t                           last_modified;
     off_t                            content_length;
@@ -76,6 +75,7 @@ struct ngx_http_tcache_ctx_s {
 
     ngx_pool_t                      *pool;
 
+    unsigned                         no_cache:1;
     unsigned                         store:1;
 
     ngx_http_tcache_node_t          *node;
@@ -88,7 +88,7 @@ typedef struct {
 
 
 struct ngx_http_tcache_node_s {
-    /* storage specific data point */
+    /* storage specific data pointer */
     void                            *index;
 
     u_char                          *key;

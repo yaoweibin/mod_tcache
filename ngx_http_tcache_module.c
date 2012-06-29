@@ -49,11 +49,15 @@ static void ngx_http_tcache_exit_process(ngx_cycle_t *cycle);
 
 extern ngx_http_tcache_storage_t tcache_slab;
 extern ngx_http_tcache_storage_t tcache_freelist;
+#if (NGX_TCACHE_MDB)
 extern ngx_http_tcache_storage_t tcache_mdb;
+#endif
 
 static ngx_conf_storage_t  ngx_http_tcache_storages[] = {
     { ngx_string("FREELIST"), &tcache_freelist },
+#if (NGX_TCACHE_MDB)
     { ngx_string("MDB"),      &tcache_mdb      },
+#endif
     { ngx_string("SLAB"),     &tcache_slab     },
     { ngx_null_string, NULL}
 };
@@ -686,6 +690,7 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     cache->log  = cf->log;
     cache->pool = cf->pool;
 
+#if (NGX_TCACHE_MDB)
     /* 
      * The mdb library will take care of all the stuff.
      * This shared memory is only used for lock purpose
@@ -693,6 +698,7 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (cache->storage == &tcache_mdb) {
         max_size = ngx_pagesize; 
     }
+#endif
 
     shm_zone = ngx_shared_memory_add(cf, name, (size_t) max_size,
                                      &ngx_http_tcache_module);
@@ -955,24 +961,26 @@ ngx_http_tcache_init_zone(ngx_shm_zone_t *shm_zone, void *data)
         cache->shpool = ocache->shpool;
         cache->sh = ocache->sh;
 
-        if (ocache->storage == &tcache_mdb) {
-            ngx_shmtx_lock(&ocache->shpool->mutex);
-            ocache->storage->cleanup(ocache);
-            ngx_shmtx_unlock(&ocache->shpool->mutex);
-        }
+        ngx_shmtx_lock(&ocache->shpool->mutex);
+        ocache->storage->cleanup(ocache);
+        ngx_shmtx_unlock(&ocache->shpool->mutex);
 
+#if (NGX_TCACHE_MDB)
         if (cache->storage == &tcache_mdb) {
-            goto init;
+            ngx_shmtx_lock(&cache->shpool->mutex);
+            if (cache->storage->init(cache) != NGX_OK) {
+                ngx_shmtx_unlock(&cache->shpool->mutex);
+                return NGX_ERROR;
+            }
+            ngx_shmtx_unlock(&cache->shpool->mutex);
         }
-        else {
-            return NGX_OK;
-        }
+#endif
+
+        return NGX_OK;
     }
 
     shpool = (ngx_slab_pool_t *) shm_zone->shm.addr;
     cache->shpool = shpool;
-
-init:
 
     ngx_shmtx_lock(&cache->shpool->mutex);
     if (cache->storage->init(cache) != NGX_OK) {
