@@ -33,6 +33,8 @@ static ngx_int_t ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache,
     ngx_http_tcache_ctx_t *ctx);
 static void ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache,
     ngx_http_tcache_node_t *tn);
+static void ngx_http_tcache_mdb_expire(ngx_http_tcache_t *cache);
+static void ngx_http_tcache_mdb_force_expire(ngx_http_tcache_t *cache);
 static void ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache);
 
 
@@ -42,8 +44,8 @@ ngx_http_tcache_storage_t tcache_mdb = {
     ngx_http_tcache_mdb_put,
     NULL,
     ngx_http_tcache_mdb_delete,
-    NULL,
-    NULL,
+    ngx_http_tcache_mdb_expire,
+    ngx_http_tcache_mdb_force_expire,
     ngx_http_tcache_mdb_cleanup,
 };
 
@@ -224,6 +226,20 @@ ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn)
     key.size = NGX_HTTP_CACHE_KEY_LEN;
 
    (void) mdb_del(mdb->db, mdb->area, &key, 0);
+}
+
+
+static void
+ngx_http_tcache_mdb_expire(ngx_http_tcache_t *cache)
+{
+    /* Do nothing, mdb will take care of all the thing */
+}
+
+
+static void
+ngx_http_tcache_mdb_force_expire(ngx_http_tcache_t *cache)
+{
+    /* Do nothing, mdb will take care of all the thing */
 }
 
 

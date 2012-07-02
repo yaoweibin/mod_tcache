@@ -78,8 +78,9 @@ fi
 
 
 ngx_addon_name=ngx_http_tcache_module
+PROCS_MODULES="$PROCS_MODULES ngx_proc_tcache_manager_module"
 HTTP_AUX_FILTER_MODULES="$HTTP_AUX_FILTER_MODULES ngx_http_tcache_module"
 TCACHE_STORAGES="$ngx_addon_dir/storages/ngx_http_tcache_freelist.c $mdb_source $ngx_addon_dir/storages/ngx_http_tcache_slab.c"
 CORE_INCS="$CORE_INCS $ngx_addon_dir"
 NGX_ADDON_DEPS="$NGX_ADDON_DEPS $ngx_addon_dir/ngx_http_tcache_module.h $ngx_addon_dir/ngx_http_tcache_headers.h"
-NGX_ADDON_SRCS="$NGX_ADDON_SRCS $TCACHE_STORAGES $ngx_addon_dir/ngx_http_tcache_module.c $ngx_addon_dir/ngx_http_tcache_headers.c"
+NGX_ADDON_SRCS="$NGX_ADDON_SRCS $TCACHE_STORAGES $ngx_addon_dir/ngx_http_tcache_module.c $ngx_addon_dir/ngx_http_tcache_headers.c $ngx_addon_dir/ngx_proc_tcache_manager_module.c"
