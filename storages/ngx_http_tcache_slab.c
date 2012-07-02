@@ -289,6 +289,9 @@ ngx_http_tcache_slab_delete(ngx_http_tcache_t *cache,
         ngx_slab_free_locked(shpool, tn->payload);
     }
 
+    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
+            "http tcache expire delete: \"%p\"", &index->queue);
+
     ngx_queue_remove(&index->queue);
     ngx_rbtree_delete(&sh->rbtree, &index->node);
 
@@ -312,17 +315,23 @@ ngx_http_tcache_slab_expire(ngx_http_tcache_t *cache)
     now = ngx_time();
 
     for ( ;; ) {
+
         if (ngx_queue_empty(&sh->queue)) {
             return;
         }
 
         q = ngx_queue_last(&sh->queue);
 
+        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, ngx_cycle->log, 0,
+                       "http tcache expire: \"%p\"", q);
+
         index = ngx_queue_data(q, ngx_http_tcache_slab_node_index_t, queue);
         tn = index->data;
 
         if (tn->expires < now) {
             ngx_http_tcache_slab_delete(cache, tn);
+        } else {
+            break;
         }
     }
 }

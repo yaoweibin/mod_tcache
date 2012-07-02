@@ -12,9 +12,10 @@ static void *ngx_proc_tcache_manager_create_conf(ngx_conf_t *cf);
 static char *ngx_proc_tcache_manager_merge_conf(ngx_conf_t *cf, void *parent,
     void *child);
 static ngx_int_t ngx_proc_tcache_manager_prepare(ngx_cycle_t *cycle);
-ngx_shm_zone_t * ngx_shared_memory_get(ngx_cycle_t *cycle, ngx_str_t *name,
-    size_t size, void *tag);
+static ngx_shm_zone_t * ngx_shared_memory_get(ngx_cycle_t *cycle,
+    ngx_str_t *name, size_t size, void *tag);
 static ngx_int_t ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle);
+static void ngx_proc_tcache_manager_expire(ngx_event_t *event);
 static ngx_int_t ngx_proc_tcache_manager_loop(ngx_cycle_t *cycle);
 static void ngx_proc_tcache_manager_process_exit(ngx_cycle_t *cycle);
 static void ngx_proc_tcache_manager_accept(ngx_event_t *ev);
@@ -24,6 +25,7 @@ typedef struct {
     ngx_flag_t                       enable;
     ngx_uint_t                       port;
     ngx_socket_t                     fd;
+    ngx_event_t                      expire_event;
     ngx_str_t                        shm_name;
     ngx_shm_zone_t                  *shm_zone;
 } ngx_proc_tcache_manager_conf_t;
@@ -168,7 +170,7 @@ ngx_proc_tcache_manager_prepare(ngx_cycle_t *cycle)
 }
 
 
-ngx_shm_zone_t *
+static ngx_shm_zone_t *
 ngx_shared_memory_get(ngx_cycle_t *cycle, ngx_str_t *name, size_t size,
     void *tag)
 {
@@ -219,7 +221,7 @@ static ngx_int_t
 ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle)
 {
     int                             reuseaddr;
-    ngx_event_t                    *rev;
+    ngx_event_t                    *rev, *expire;
     ngx_socket_t                    fd;
     ngx_connection_t               *c;
     struct sockaddr_in              sin;
@@ -284,40 +286,47 @@ ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle)
 
     conf->fd = fd;
 
+    expire = &conf->expire_event;
+
+    expire->handler = ngx_proc_tcache_manager_expire;
+    expire->log = cycle->log;
+    expire->data = conf;
+    expire->timer_set = 0;
+    
+    ngx_add_timer(expire, 5000);
+
     return NGX_OK;
+}
+
+
+static void
+ngx_proc_tcache_manager_expire(ngx_event_t *event)
+{
+    ngx_http_tcache_t              *cache;
+    ngx_proc_tcache_manager_conf_t *conf;
+
+    conf = event->data;
+
+    if (conf == NULL || conf->shm_zone == NULL) {
+        return;
+    }
+
+    cache = conf->shm_zone->data;
+
+    ngx_log_debug0(NGX_LOG_DEBUG_CORE, event->log, 0,
+                   "tcache_manager manager expire");
+
+    ngx_shmtx_lock(&cache->shpool->mutex);
+    cache->storage->expire(cache);
+    ngx_shmtx_unlock(&cache->shpool->mutex);
+
+    ngx_add_timer(event, 5000);
 }
 
 
 static ngx_int_t
 ngx_proc_tcache_manager_loop(ngx_cycle_t *cycle)
 {
-    time_t                          next;
-    ngx_http_tcache_t              *cache;
-    ngx_proc_tcache_manager_conf_t *conf;
-
-    conf = ngx_proc_get_conf(cycle->conf_ctx, ngx_proc_tcache_manager_module);
-
-    if (conf->shm_zone == NULL) {
-        return NGX_OK;
-    }
-
-    next = 5;
-    cache = conf->shm_zone->data;
-
-    for ( ;; ) {
-        ngx_log_debug1(NGX_LOG_DEBUG_CORE, cycle->log, 0,
-                       "tcache_manager manager loop: %V",
-                       &ngx_cached_http_time);
-
-        ngx_shmtx_lock(&cache->shpool->mutex);
-        cache->storage->expire(cache);
-        ngx_shmtx_unlock(&cache->shpool->mutex);
-
-        ngx_time_update();
-
-        ngx_sleep(next);
-    }
-
     return NGX_OK;
 }
 
@@ -331,6 +340,10 @@ ngx_proc_tcache_manager_process_exit(ngx_cycle_t *cycle)
 
     if (conf->fd) {
         ngx_close_socket(conf->fd);
+    }
+
+    if (conf->expire_event.timer_set) {
+        ngx_del_timer(&conf->expire_event);
     }
 
     return;
