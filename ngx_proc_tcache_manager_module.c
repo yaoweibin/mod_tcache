@@ -24,6 +24,8 @@ static void ngx_proc_tcache_manager_accept(ngx_event_t *ev);
 typedef struct {
     ngx_flag_t                       enable;
     ngx_uint_t                       port;
+    ngx_msec_t                       interval;;
+
     ngx_socket_t                     fd;
     ngx_event_t                      expire_event;
     ngx_str_t                        shm_name;
@@ -44,7 +46,14 @@ static ngx_command_t ngx_proc_tcache_manager_commands[] = {
       NGX_PROC_CONF|NGX_CONF_FLAG,
       ngx_proc_tcache_manager,
       NGX_PROC_CONF_OFFSET,
-      offsetof(ngx_proc_tcache_manager_conf_t, enable),
+      0,
+      NULL },
+
+    { ngx_string("tcache_manager_interval"),
+      NGX_PROC_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_msec_slot,
+      NGX_PROC_CONF_OFFSET,
+      offsetof(ngx_proc_tcache_manager_conf_t, interval),
       NULL },
 
       ngx_null_command
@@ -111,7 +120,6 @@ ngx_proc_tcache_manager_create_conf(ngx_conf_t *cf)
     ngx_proc_tcache_manager_conf_t  *conf;
 
     conf = ngx_pcalloc(cf->pool, sizeof(ngx_proc_tcache_manager_conf_t));
-
     if (conf == NULL) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                            "tcache_manager create proc conf error");
@@ -122,12 +130,14 @@ ngx_proc_tcache_manager_create_conf(ngx_conf_t *cf)
      * set by ngx_pcalloc():
      *
      *     conf->fd = 0;
+     *     conf->expire_event all NULL or 0
      *     conf->shm_name = {0, NULL};
      *     conf->shm_zone = 0;
      */
 
     conf->enable = NGX_CONF_UNSET;
     conf->port = NGX_CONF_UNSET_UINT;
+    conf->interval = NGX_CONF_UNSET_MSEC;
 
     return conf;
 }
@@ -139,8 +149,9 @@ ngx_proc_tcache_manager_merge_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_proc_tcache_manager_conf_t  *prev = parent;
     ngx_proc_tcache_manager_conf_t  *conf = child;
 
-    ngx_conf_merge_uint_value(conf->port, prev->port, 0);
     ngx_conf_merge_value(conf->enable, prev->enable, 0);
+    ngx_conf_merge_uint_value(conf->port, prev->port, 0);
+    ngx_conf_merge_msec_value(conf->interval, prev->interval, 5000);
 
     return NGX_CONF_OK;
 }
@@ -204,9 +215,9 @@ ngx_shared_memory_get(ngx_cycle_t *cycle, ngx_str_t *name, size_t size,
 
         if (tag != shm_zone[i].tag) {
             ngx_log_error(NGX_LOG_EMERG, cycle->log, 0,
-                            "the shared memory zone \"%V\" is "
-                            "already declared for a different use",
-                            &shm_zone[i].shm.name);
+                          "the shared memory zone \"%V\" is "
+                          "already declared for a different use",
+                          &shm_zone[i].shm.name);
             return NULL;
         }
 
@@ -228,6 +239,7 @@ ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle)
     ngx_proc_tcache_manager_conf_t *conf;
 
     conf = ngx_proc_get_conf(cycle->conf_ctx, ngx_proc_tcache_manager_module);
+
     fd = ngx_socket(AF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
         ngx_log_error(NGX_LOG_ERR, cycle->log, 0, "tcache_manager socket error");
@@ -246,6 +258,7 @@ ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle)
         ngx_close_socket(fd);
         return NGX_ERROR;
     }
+
     if (ngx_nonblocking(fd) == -1) {
         ngx_log_error(NGX_LOG_EMERG, cycle->log, ngx_socket_errno,
                       "tcache_manager nonblocking failed");
@@ -293,7 +306,7 @@ ngx_proc_tcache_manager_process_init(ngx_cycle_t *cycle)
     expire->data = conf;
     expire->timer_set = 0;
     
-    ngx_add_timer(expire, 5000);
+    ngx_add_timer(expire, conf->interval);
 
     return NGX_OK;
 }
@@ -320,7 +333,7 @@ ngx_proc_tcache_manager_expire(ngx_event_t *event)
     cache->storage->expire(cache);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
-    ngx_add_timer(event, 5000);
+    ngx_add_timer(event, conf->interval);
 }
 
 
@@ -345,8 +358,6 @@ ngx_proc_tcache_manager_process_exit(ngx_cycle_t *cycle)
     if (conf->expire_event.timer_set) {
         ngx_del_timer(&conf->expire_event);
     }
-
-    return;
 }
 
 
@@ -373,5 +384,6 @@ ngx_proc_tcache_manager_accept(ngx_event_t *ev)
     ngx_write_fd(s, output.data, output.len);
 
 finish:
+
     ngx_close_socket(s);
 }

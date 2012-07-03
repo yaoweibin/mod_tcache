@@ -57,10 +57,19 @@ TCACHE: MISS
 --- response_headers
 TCACHE: HIT
 
-=== TEST 3: tcache module with mdb first time
+=== TEST 3: the tcache module, slab, with manager process
+--- main_config
+
+processes {
+    process tcache_manager {
+        tcache_manager test;
+        delay_start 300ms;
+        listen 1982;
+    }
+}
 
 --- http_config
-    tcache_shm_zone test_mdb storage=mdb size=256M;
+    tcache_shm_zone test;
 
     upstream backends {
         server www.taobao.com;
@@ -68,7 +77,7 @@ TCACHE: HIT
 
 --- config
     location / {
-        tcache test_mdb;
+        tcache test;
         tcache_valid 200    1h;
 
         proxy_set_header Host 'www.taobao.com';
@@ -77,12 +86,23 @@ TCACHE: HIT
 --- request
     GET /
 --- response_headers
-TCACHE: MISS
+TCACHE: HIT
 
-=== TEST 4: tcache module with mdb second time
+=== TEST 4: the tcache module, slab, with manager process
+--- main_config
+
+processes {
+    process tcache_manager {
+        tcache_manager test;
+        tcache_manager_interval test;
+
+        delay_start 300ms;
+        listen 1982;
+    }
+}
 
 --- http_config
-    tcache_shm_zone test_mdb storage=mdb size=256M;
+    tcache_shm_zone test;
 
     upstream backends {
         server www.taobao.com;
@@ -90,8 +110,8 @@ TCACHE: MISS
 
 --- config
     location / {
-        tcache test_mdb;
-        tcache_valid 200    1h;
+        tcache test;
+        tcache_valid 200    1s;
 
         proxy_set_header Host 'www.taobao.com';
         proxy_pass http://backends;
