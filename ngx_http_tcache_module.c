@@ -23,6 +23,9 @@ static ngx_int_t ngx_http_tcache_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_tcache_body_filter(ngx_http_request_t *r,
     ngx_chain_t *in);
 
+static ngx_int_t ngx_http_tcache_status_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
+
 static char *ngx_http_tcache_enable(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static char *ngx_http_tcache_key(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -193,7 +196,7 @@ ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 
 static ngx_http_variable_t ngx_http_tcache_variables[] = {
 
-    { ngx_string("tcache_status"), NULL, NULL, 0, 0, 0 },
+    { ngx_string("tcache_status"), NULL, ngx_http_tcache_status_variable, 0, 0, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
@@ -275,7 +278,7 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
 bypass:
 
-    ctx->no_cache = 1;
+    ctx->bypass = 1;
     return NGX_DECLINED;
 }
 
@@ -406,7 +409,6 @@ static ngx_int_t
 ngx_http_tcache_header_filter(ngx_http_request_t *r)
 {
     ngx_int_t                      rc;
-    ngx_table_elt_t               *h;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
     ngx_http_tcache_loc_conf_t    *conf;
@@ -418,7 +420,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    if (ctx->no_cache) {
+    if (ctx->bypass) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -467,6 +469,9 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "tcache header filter buffer: %z", ctx->cache_length);
 
+#if 0
+    ngx_table_elt_t               *h;
+
     h = ngx_list_push(&r->headers_out.headers);
     if (h == NULL) {
         return NGX_ERROR;
@@ -476,6 +481,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_str_set(&h->key, "TCACHE");
     ngx_str_set(&h->value, "MISS");
     h->lowcase_key = (u_char *) "tcache";
+#endif
     
     return ngx_http_next_header_filter(r);
 }
@@ -497,7 +503,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return NGX_ERROR;
     }
 
-    if (ctx->no_cache || ctx->valid == 0 || ctx->store == 0) {
+    if (ctx->bypass || ctx->valid == 0 || ctx->store == 0) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -561,6 +567,39 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     return ngx_http_next_body_filter(r, in);
+}
+
+
+static ngx_int_t
+ngx_http_tcache_status_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_http_tcache_ctx_t         *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
+    if (ctx == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    if (ctx->bypass) {
+        v->len = sizeof("BYPASS") - 1;
+        v->data = (u_char *) "BYPASS";
+
+    } else if (ctx->store) {
+        v->len = sizeof("MISS") - 1;
+        v->data = (u_char *) "MISS";
+
+    } else {
+        v->len = sizeof("HIT") - 1;
+        v->data = (u_char *) "HIT";
+    } 
+
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
 }
 
 

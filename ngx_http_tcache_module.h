@@ -75,7 +75,7 @@ struct ngx_http_tcache_ctx_s {
 
     ngx_pool_t                      *pool;
 
-    unsigned                         no_cache:1;
+    unsigned                         bypass:1;
     unsigned                         store:1;
 
     ngx_http_tcache_node_t          *node;

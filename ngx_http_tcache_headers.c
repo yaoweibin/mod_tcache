@@ -321,16 +321,6 @@ ngx_http_tcache_process_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
             ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                            "tcache parse header done");
 
-            h = ngx_list_push(&r->headers_out.headers);
-            if (h == NULL) {
-                return NGX_ERROR;
-            }
-
-            h->hash = 1;
-            ngx_str_set(&h->key, "TCACHE");
-            ngx_str_set(&h->value, "HIT");
-            h->lowcase_key = (u_char *) "tcache";
-
             return NGX_OK;
         }
 

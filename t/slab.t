@@ -27,6 +27,8 @@ __DATA__
         tcache test;
         tcache_valid 200    1h;
 
+        add_header TCACHE $tcache_status;
+
         proxy_set_header Host 'www.taobao.com';
         proxy_pass http://backends;
     }
@@ -48,6 +50,8 @@ TCACHE: MISS
     location / {
         tcache test;
         tcache_valid 200    1h;
+
+        add_header TCACHE $tcache_status;
 
         proxy_set_header Host 'www.taobao.com';
         proxy_pass http://backends;
@@ -78,7 +82,9 @@ processes {
 --- config
     location / {
         tcache test;
-        tcache_valid 200    1h;
+        tcache_valid 200    1s;
+
+        add_header TCACHE $tcache_status;
 
         proxy_set_header Host 'www.taobao.com';
         proxy_pass http://backends;
@@ -111,7 +117,9 @@ processes {
 --- config
     location / {
         tcache test;
-        tcache_valid 200    1s;
+        tcache_valid 200    1h;
+
+        add_header TCACHE $tcache_status;
 
         proxy_set_header Host 'www.taobao.com';
         proxy_pass http://backends;
@@ -120,3 +128,75 @@ processes {
     GET /
 --- response_headers
 TCACHE: HIT
+
+=== TEST 5: the tcache module, slab, GET 
+--- main_config
+
+processes {
+    process tcache_manager {
+        tcache_manager test;
+        tcache_manager_interval test;
+
+        delay_start 300ms;
+        listen 1982;
+    }
+}
+
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location / {
+        tcache test;
+        tcache_methods GET;
+        tcache_valid 200    1h;
+
+        add_header TCACHE $tcache_status;
+
+        proxy_set_header Host 'www.taobao.com';
+        proxy_pass http://backends;
+    }
+--- request
+    GET /
+--- response_headers
+TCACHE: HIT
+
+=== TEST 6: the tcache module, slab, POST 
+--- main_config
+
+processes {
+    process tcache_manager {
+        tcache_manager test;
+        tcache_manager_interval test;
+
+        delay_start 300ms;
+        listen 1982;
+    }
+}
+
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location / {
+        tcache test;
+        tcache_methods GET;
+        tcache_valid 200    1h;
+
+        add_header TCACHE $tcache_status;
+
+        proxy_set_header Host 'www.taobao.com';
+        proxy_pass http://backends;
+    }
+--- request
+    POST /
+--- response_headers
+TCACHE: BYPASS
