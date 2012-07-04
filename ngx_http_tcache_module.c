@@ -23,6 +23,8 @@ static ngx_int_t ngx_http_tcache_header_filter(ngx_http_request_t *r);
 static ngx_int_t ngx_http_tcache_body_filter(ngx_http_request_t *r,
     ngx_chain_t *in);
 
+static ngx_uint_t ngx_http_tcache_get_fail_status(ngx_uint_t status);
+
 static ngx_int_t ngx_http_tcache_status_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
@@ -76,16 +78,14 @@ static ngx_conf_bitmask_t  ngx_http_tcache_method_mask[] = {
 };
 
 static ngx_conf_bitmask_t  ngx_http_tcache_use_stale_masks[] = {
-    { ngx_string("error"), NGX_HTTP_UPSTREAM_FT_ERROR },
-    { ngx_string("timeout"), NGX_HTTP_UPSTREAM_FT_TIMEOUT },
-    { ngx_string("invalid_header"), NGX_HTTP_UPSTREAM_FT_INVALID_HEADER },
-    { ngx_string("http_500"), NGX_HTTP_UPSTREAM_FT_HTTP_500 },
-    { ngx_string("http_502"), NGX_HTTP_UPSTREAM_FT_HTTP_502 },
-    { ngx_string("http_503"), NGX_HTTP_UPSTREAM_FT_HTTP_503 },
-    { ngx_string("http_504"), NGX_HTTP_UPSTREAM_FT_HTTP_504 },
-    { ngx_string("http_404"), NGX_HTTP_UPSTREAM_FT_HTTP_404 },
-    { ngx_string("updating"), NGX_HTTP_UPSTREAM_FT_UPDATING },
-    { ngx_string("off"), NGX_HTTP_UPSTREAM_FT_OFF },
+    { ngx_string("http_500"), NGX_HTTP_FT_HTTP_500 },
+    { ngx_string("http_502"), NGX_HTTP_FT_HTTP_502 },
+    { ngx_string("http_503"), NGX_HTTP_FT_HTTP_503 },
+    { ngx_string("http_504"), NGX_HTTP_FT_HTTP_504 },
+    { ngx_string("http_404"), NGX_HTTP_FT_HTTP_404 },
+    { ngx_string("http_408"), NGX_HTTP_FT_HTTP_408 },
+    { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING },
+    { ngx_string("off"),      NGX_HTTP_FT_HTTP_OFF},
     { ngx_null_string, 0 }
 };
 
@@ -134,11 +134,18 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       offsetof(ngx_http_tcache_loc_conf_t, default_expires),
       NULL },
 
+    { ngx_string("tcache_grace"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_sec_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, grace),
+      NULL },
+
     { ngx_string("tcache_use_stale"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
       NGX_HTTP_LOC_CONF_OFFSET,
-      offsetof(ngx_http_tcache_loc_conf_t, use_stale),
+      offsetof(ngx_http_tcache_loc_conf_t, status_use_stale),
       &ngx_http_tcache_use_stale_masks },
 
     { ngx_string("tcache_shm_zone"),
@@ -269,11 +276,22 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
     rc = cache->storage->get(cache, ctx, 0);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
-    if (rc == NGX_OK) {
+    switch (rc) {
+
+    case NGX_OK:
+        /* find the record */
+        ctx->use_cache = 0;
         return ngx_http_tcache_send(r, ctx);
-    } else {
-        /* not found */
+
+    case NGX_DECLINED:
+        /* not find the record */
         return rc;
+
+    case NGX_ERROR:
+        return NGX_ERROR;
+
+    default:
+        break;
     }
 
 bypass:
@@ -409,6 +427,7 @@ static ngx_int_t
 ngx_http_tcache_header_filter(ngx_http_request_t *r)
 {
     ngx_int_t                      rc;
+    ngx_uint_t                     fail_status;
     ngx_http_tcache_t             *cache;
     ngx_http_tcache_ctx_t         *ctx;
     ngx_http_tcache_loc_conf_t    *conf;
@@ -420,7 +439,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
-    if (ctx->bypass) {
+    if (ctx->bypass || ctx->use_cache) {
         return ngx_http_next_header_filter(r);
     }
 
@@ -433,19 +452,39 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     if (ctx->valid == 0) {
         return ngx_http_next_header_filter(r);
     }
+
+    ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache header filter \"%V\", %T", &r->uri, ctx->valid);
+
+    fail_status = ngx_http_tcache_get_fail_status(ctx->status);
+    if (fail_status & conf->status_use_stale) {
+        ctx->can_use_stale = 1;
+    }
 
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
     rc = cache->storage->get(cache, ctx, 1);
     ngx_shmtx_unlock(&cache->shpool->mutex);
 
-    /* If we find the record, we don't need insert it again. */
-    if (rc == NGX_OK) {
+    switch (rc) {
+
+    case NGX_OK:
+        /* If we find the record, we don't need insert it again. */
         return ngx_http_next_header_filter(r);
+
+    case NGX_AGAIN:
+        ctx->grace = conf->grace;
+        /*TODO:return the stale cache*/
+        break;
+
+    case NGX_ERROR:
+        return NGX_ERROR;
+
+    default: /* NGX_DECLINED */
+        break;
     }
 
     ctx->store = 1;
@@ -469,20 +508,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "tcache header filter buffer: %z", ctx->cache_length);
 
-#if 0
-    ngx_table_elt_t               *h;
-
-    h = ngx_list_push(&r->headers_out.headers);
-    if (h == NULL) {
-        return NGX_ERROR;
-    }
-
-    h->hash = 1;
-    ngx_str_set(&h->key, "TCACHE");
-    ngx_str_set(&h->value, "MISS");
-    h->lowcase_key = (u_char *) "tcache";
-#endif
-    
     return ngx_http_next_header_filter(r);
 }
 
@@ -503,7 +528,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         return NGX_ERROR;
     }
 
-    if (ctx->bypass || ctx->valid == 0 || ctx->store == 0) {
+    if (ctx->bypass || ctx->use_cache || ctx->valid == 0 || ctx->store == 0) {
         return ngx_http_next_body_filter(r, in);
     }
 
@@ -567,6 +592,47 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     }
 
     return ngx_http_next_body_filter(r, in);
+}
+
+
+static ngx_uint_t
+ngx_http_tcache_get_fail_status(ngx_uint_t status)
+{
+    ngx_uint_t ft;
+
+    ft = 0;
+
+    switch (status) {
+
+    case 500:
+        ft = NGX_HTTP_FT_HTTP_500;
+        break;
+
+    case 502:
+        ft = NGX_HTTP_FT_HTTP_502;
+        break;
+
+    case 503:
+        ft = NGX_HTTP_FT_HTTP_503;
+        break;
+
+    case 504:
+        ft = NGX_HTTP_FT_HTTP_504;
+        break;
+
+    case 404:
+        ft = NGX_HTTP_FT_HTTP_404;
+        break;
+
+    case 408:
+        ft = NGX_HTTP_FT_HTTP_408;
+        break;
+
+    default:
+        break;
+    }
+
+    return ft;
 }
 
 
@@ -797,7 +863,7 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     /*
      * set by ngx_pcalloc():
      *
-     *     conf->use_stale = 0;
+     *     conf->status_use_stale = 0;
      *     conf->methods = 0;
      *     conf->shm_zone = NULL;
      */
@@ -806,6 +872,7 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     conf->valid = NGX_CONF_UNSET_PTR;
     conf->bypass = NGX_CONF_UNSET_PTR;
     conf->default_expires = NGX_CONF_UNSET;
+    conf->grace = NGX_CONF_UNSET;
     conf->default_buffer_size = NGX_CONF_UNSET;
 
     return conf;
@@ -849,19 +916,16 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_ptr_value(conf->valid, prev->valid, NULL);
     ngx_conf_merge_ptr_value(conf->bypass, prev->bypass, NULL);
     ngx_conf_merge_sec_value(conf->default_expires, prev->default_expires, 60);
+    ngx_conf_merge_sec_value(conf->grace, prev->grace, 60);
     ngx_conf_merge_size_value(conf->default_buffer_size,
                               prev->default_buffer_size, 128 * 1024);
 
-    ngx_conf_merge_bitmask_value(conf->use_stale, prev->use_stale,
+    ngx_conf_merge_bitmask_value(conf->status_use_stale, prev->status_use_stale,
                                  (NGX_CONF_BITMASK_SET
-                                  |NGX_HTTP_UPSTREAM_FT_OFF));
+                                  |NGX_HTTP_FT_HTTP_OFF));
 
-    if (conf->use_stale & NGX_HTTP_UPSTREAM_FT_OFF) {
-        conf->use_stale = NGX_CONF_BITMASK_SET | NGX_HTTP_UPSTREAM_FT_OFF;
-    }
-
-    if (conf->use_stale & NGX_HTTP_UPSTREAM_FT_ERROR) {
-        conf->use_stale |= NGX_HTTP_UPSTREAM_FT_NOLIVE;
+    if (conf->status_use_stale & NGX_HTTP_FT_HTTP_OFF) {
+        conf->status_use_stale = NGX_CONF_BITMASK_SET | NGX_HTTP_FT_HTTP_OFF;
     }
 
     return NGX_CONF_OK;

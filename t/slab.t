@@ -100,7 +100,7 @@ TCACHE: HIT
 processes {
     process tcache_manager {
         tcache_manager test;
-        tcache_manager_interval test;
+        tcache_manager_interval 3s;
 
         delay_start 300ms;
         listen 1982;
@@ -135,7 +135,7 @@ TCACHE: HIT
 processes {
     process tcache_manager {
         tcache_manager test;
-        tcache_manager_interval test;
+        tcache_manager_interval 3s;
 
         delay_start 300ms;
         listen 1982;
@@ -171,7 +171,7 @@ TCACHE: HIT
 processes {
     process tcache_manager {
         tcache_manager test;
-        tcache_manager_interval test;
+        tcache_manager_interval 3s;
 
         delay_start 300ms;
         listen 1982;
@@ -198,5 +198,43 @@ processes {
     }
 --- request
     POST /
+--- response_headers
+TCACHE: BYPASS
+
+=== TEST 7: the tcache module, slab, bypass 
+--- main_config
+
+processes {
+    process tcache_manager {
+        tcache_manager test;
+        tcache_manager_interval 3s;
+
+        delay_start 300ms;
+        listen 1982;
+    }
+}
+
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location / {
+        set $testpass "1";
+
+        tcache test;
+        tcache_valid 200 1h;
+        tcache_bypass $testpass;
+
+        add_header TCACHE $tcache_status;
+
+        proxy_set_header Host 'www.taobao.com';
+        proxy_pass http://backends;
+    }
+--- request
+    GET /
 --- response_headers
 TCACHE: BYPASS

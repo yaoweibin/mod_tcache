@@ -37,6 +37,19 @@ typedef struct {
 } ngx_http_tcache_storage_t;
 
 
+#define NGX_HTTP_FT_HTTP_START      0x00000002
+#define NGX_HTTP_FT_HTTP_FOO        0x00000004
+#define NGX_HTTP_FT_HTTP_BAR        0x00000008
+#define NGX_HTTP_FT_HTTP_500        0x00000010
+#define NGX_HTTP_FT_HTTP_502        0x00000020
+#define NGX_HTTP_FT_HTTP_503        0x00000040
+#define NGX_HTTP_FT_HTTP_504        0x00000080
+#define NGX_HTTP_FT_HTTP_404        0x00000100
+#define NGX_HTTP_FT_HTTP_408        0x00000200
+#define NGX_HTTP_FT_HTTP_UPDATING   0x00000400
+#define NGX_HTTP_FT_HTTP_OFF        0x00000800
+
+
 typedef struct {
     ngx_flag_t                       enable;
 
@@ -46,11 +59,13 @@ typedef struct {
 
     ngx_uint_t                       methods;
     time_t                           default_expires;
+    /* the the grace time period after expires */
+    time_t                           grace;
 
     ngx_array_t                     *valid;
     ngx_array_t                     *bypass;
 
-    ngx_uint_t                       use_stale;
+    ngx_uint_t                       status_use_stale;
 
     size_t                           default_buffer_size;
 
@@ -59,6 +74,8 @@ typedef struct {
 
 struct ngx_http_tcache_ctx_s {
     time_t                           valid;
+    ngx_uint_t                       status;
+    time_t                           grace;
     time_t                           last_modified;
     off_t                            content_length;
     ngx_str_t                        key_string;
@@ -74,7 +91,10 @@ struct ngx_http_tcache_ctx_s {
     u_char                          *payload;
 
     ngx_pool_t                      *pool;
+    
 
+    unsigned                         can_use_stale:1;
+    unsigned                         use_cache:1;
     unsigned                         bypass:1;
     unsigned                         store:1;
 
@@ -93,10 +113,15 @@ struct ngx_http_tcache_node_s {
 
     u_char                          *key;
     time_t                           expires;
+    time_t                           grace;
     time_t                           last_modified;
     time_t                           date;
+    ngx_uint_t                       status;
 
-    unsigned                         exists:1;
+    time_t                           last_try;
+    ngx_uint_t                       fall_count;
+
+    unsigned                         use_stale:1;
     unsigned                         updating:1;
 
     size_t                           length;
