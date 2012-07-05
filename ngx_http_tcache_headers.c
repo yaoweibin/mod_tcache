@@ -3,6 +3,8 @@
 #include "ngx_http_tcache_headers.h"
 
 
+static ngx_uint_t ngx_http_tcache_control(ngx_list_part_t *part);
+
 static ngx_int_t ngx_http_tcache_process_status_line(ngx_http_request_t *r,
     ngx_buf_t *buffer);
 static ngx_int_t ngx_http_tcache_process_headers(ngx_http_request_t *r,
@@ -186,10 +188,81 @@ ngx_http_tcache_header_t  ngx_http_tcache_headers_in[] = {
 ngx_int_t
 ngx_http_tcache_headers_init(ngx_http_tcache_ctx_t *ctx)
 {
+    ctx->request_cache_control = ngx_http_tcache_control;
     ctx->process_headers = ngx_http_tcache_process_status_line;
     ctx->store_headers = ngx_http_tcache_store_headers;
 
     return NGX_OK;
+}
+
+
+static ngx_uint_t
+ngx_http_tcache_control(ngx_list_part_t *part)
+{
+    u_char                          *p;
+    u_char                          *last;
+    ngx_uint_t                       i, cache_flag;
+    ngx_table_elt_t                 *h;
+
+    h = part->elts;
+    cache_flag = 0;
+
+    for (i = 0; /* void */; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            h = part->elts;
+            i = 0;
+        }
+
+        if (h[i].hash == 0) {
+            continue;
+        }
+
+        if ((h[i].key.len == sizeof("Cache-Control") - 1)
+            && ngx_strncasecmp(h[i].key.data, (u_char *)"Cache-Control",
+                               sizeof("Cache-Control") - 1) == 0)
+        {
+            p = h[i].value.data;
+            last = p + h[i].value.len;
+
+            if (ngx_strlcasestrn(p, last, (u_char *)"no-cache", 8 - 1) != NULL) {
+                cache_flag |= TCACHE_CONTROL_NO_CACHE;
+            }
+
+            if (ngx_strlcasestrn(p, last, (u_char *)"no-store", 8 - 1) != NULL) {
+                cache_flag |= TCACHE_CONTROL_NO_STORE;
+            }
+
+            if (ngx_strlcasestrn(p, last, (u_char *)"private", 7 - 1) != NULL) {
+                cache_flag |= TCACHE_CONTROL_PRIVATE;
+            }
+
+            if (ngx_strlcasestrn(p, last, (u_char *)"public", 6 - 1) != NULL) {
+                cache_flag |= TCACHE_CONTROL_PUBLIC;
+            }
+
+            continue;
+
+        } else if ((h[i].key.len == sizeof("Pragma") - 1)
+                    && ngx_strncasecmp(h[i].key.data, (u_char *)"Pragma",
+                                       sizeof("Pragma") - 1) == 0) {
+
+            p = h[i].value.data;
+            last = p + h[i].value.len;
+
+            if (ngx_strlcasestrn(p, last, (u_char *)"no-cache", 8 - 1) != NULL)
+            {
+                cache_flag |= TCACHE_CONTROL_NO_CACHE;
+            }
+        }
+    }
+
+    return cache_flag;
 }
 
 

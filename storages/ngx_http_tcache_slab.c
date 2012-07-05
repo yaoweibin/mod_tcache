@@ -177,6 +177,14 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
     if (tn->expires < now) {
         if (tn->grace > now) {
             if (tn->use_stale) {
+
+                /* Try once again */
+                if ((now - tn->last_try) > 3) {
+
+                    tn->last_try = now;
+                    return NGX_DECLINED;
+                }
+
                 goto use_cache;
             }
         }

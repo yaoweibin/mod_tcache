@@ -72,6 +72,12 @@ typedef struct {
 } ngx_http_tcache_loc_conf_t;
 
 
+#define TCACHE_CONTROL_NO_CACHE    0x00000001
+#define TCACHE_CONTROL_NO_STORE    0x00000002
+#define TCACHE_CONTROL_PRIVATE     0x00000004
+#define TCACHE_CONTROL_PUBLIC      0x00000005
+
+
 struct ngx_http_tcache_ctx_s {
     time_t                           valid;
     ngx_uint_t                       status;
@@ -81,6 +87,7 @@ struct ngx_http_tcache_ctx_s {
     ngx_str_t                        key_string;
     u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
 
+    ngx_uint_t                     (*request_cache_control)(ngx_list_part_t *part);
     ngx_int_t                      (*process_headers)(ngx_http_request_t *r,
                                                       ngx_buf_t *buffer);
     ngx_int_t                      (*store_headers)(ngx_http_request_t *r,
@@ -93,7 +100,10 @@ struct ngx_http_tcache_ctx_s {
     ngx_pool_t                      *pool;
     
 
+    ngx_uint_t                       cache_control;
+
     unsigned                         can_use_stale:1;
+    unsigned                         use_stale_cache:1;
     unsigned                         use_cache:1;
     unsigned                         bypass:1;
     unsigned                         store:1;

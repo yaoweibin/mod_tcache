@@ -255,6 +255,12 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
         break;
     }
 
+    ctx->cache_control = ctx->request_cache_control(&r->headers_in.headers.part);
+
+    if (ctx->cache_control | TCACHE_CONTROL_NO_CACHE) {
+        goto bypass;
+    }
+
     if (ngx_http_complex_value(r, &conf->key, &cache_key) != NGX_OK) {
         return NGX_ERROR;
     }
@@ -280,7 +286,7 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     case NGX_OK:
         /* find the record */
-        ctx->use_cache = 0;
+        ctx->use_cache = 1;
         return ngx_http_tcache_send(r, ctx);
 
     case NGX_DECLINED:
@@ -455,6 +461,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
+    ctx->grace = conf->grace;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache header filter \"%V\", %T", &r->uri, ctx->valid);
@@ -476,8 +483,8 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
 
     case NGX_AGAIN:
-        ctx->grace = conf->grace;
-        /*TODO:return the stale cache*/
+        /* TODO: return the stale cache */
+        ctx->use_stale_cache = 1;
         break;
 
     case NGX_ERROR:
