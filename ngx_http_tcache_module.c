@@ -90,6 +90,19 @@ static ngx_conf_bitmask_t  ngx_http_tcache_use_stale_masks[] = {
 };
 
 
+static ngx_str_t  ngx_http_tcache_hide_headers[] = {
+    ngx_string("Connection"),
+    ngx_string("Keep-Alive"),
+    ngx_string("Proxy-Authenticate"),
+    ngx_string("Proxy-Authorization"),
+    ngx_string("TE"),
+    ngx_string("Trailers"),
+    ngx_string("Transfer-Encoding"),
+    ngx_string("Upgrade"),
+    ngx_null_string
+};
+
+
 static ngx_command_t  ngx_http_tcache_commands[] = {
 
     { ngx_string("tcache"),
@@ -147,6 +160,20 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       NGX_HTTP_LOC_CONF_OFFSET,
       offsetof(ngx_http_tcache_loc_conf_t, status_use_stale),
       &ngx_http_tcache_use_stale_masks },
+
+    { ngx_string("tcache_hide_header"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_array_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, hide_headers),
+      NULL },
+
+    { ngx_string("tcache_pass_header"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_array_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, pass_headers),
+      NULL },
 
     { ngx_string("tcache_shm_zone"),
       NGX_HTTP_MAIN_CONF|NGX_CONF_TAKE123,
@@ -902,6 +929,10 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     conf->bypass = NGX_CONF_UNSET_PTR;
     conf->default_expires = NGX_CONF_UNSET;
     conf->grace = NGX_CONF_UNSET;
+
+    conf->hide_headers = NGX_CONF_UNSET_PTR;
+    conf->pass_headers = NGX_CONF_UNSET_PTR;
+
     conf->default_buffer_size = NGX_CONF_UNSET;
 
     return conf;
@@ -912,6 +943,7 @@ static char *
 ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 {
     ngx_str_t                          default_key = ngx_string(DEFAULT_KEY);
+    ngx_hash_init_t                    hash;
     ngx_http_tcache_loc_conf_t        *prev = parent;
     ngx_http_tcache_loc_conf_t        *conf = child;
     ngx_http_compile_complex_value_t   ccv;
@@ -955,6 +987,17 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
     if (conf->status_use_stale & NGX_HTTP_FT_HTTP_OFF) {
         conf->status_use_stale = NGX_CONF_BITMASK_SET | NGX_HTTP_FT_HTTP_OFF;
+    }
+
+    hash.max_size = 512;
+    hash.bucket_size = ngx_align(64, ngx_cacheline_size);
+    hash.name = "tcache_store_hide_headers_hash";
+
+    if (ngx_http_tcache_hide_headers_hash(cf, conf,
+        prev, ngx_http_tcache_hide_headers, &hash)
+        != NGX_OK)
+    {
+        return NGX_CONF_ERROR;
     }
 
     return NGX_CONF_OK;

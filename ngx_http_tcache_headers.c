@@ -529,6 +529,7 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
     ngx_uint_t                            status, i;
     ngx_list_part_t                      *part;
     ngx_table_elt_t                      *header;
+    ngx_http_tcache_loc_conf_t           *conf;
     ngx_http_tcache_content_header_t     *ch;
 
     if (r->headers_out.last_modified_time != -1) {
@@ -541,6 +542,8 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
             r->headers_out.last_modified = NULL;
         }
     }
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
 
     len = sizeof(ngx_http_tcache_content_header_t);
 
@@ -642,7 +645,11 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
             continue;
         }
 
-        /* TODO: hide headers */
+        if (ngx_hash_find(&conf->hide_headers_hash, header[i].hash,
+                          header[i].lowcase_key, header[i].key.len))
+        {
+            continue;
+        }
 
         len += header[i].key.len + sizeof(": ") - 1 + header[i].value.len
                + sizeof(CRLF) - 1;
@@ -727,6 +734,12 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
         }
 
         if (header[i].hash == 0) {
+            continue;
+        }
+
+        if (ngx_hash_find(&conf->hide_headers_hash, header[i].hash,
+                          header[i].lowcase_key, header[i].key.len))
+        {
             continue;
         }
 
@@ -937,4 +950,110 @@ ngx_http_tcache_process_content_encoding(ngx_http_request_t *r,
     return NGX_OK;
 }
 
+
+ngx_int_t
+ngx_http_tcache_hide_headers_hash(ngx_conf_t *cf,
+    ngx_http_tcache_loc_conf_t *conf, ngx_http_tcache_loc_conf_t *prev,
+    ngx_str_t *default_hide_headers, ngx_hash_init_t *hash)
+{
+    ngx_str_t       *h;
+    ngx_uint_t       i, j;
+    ngx_array_t      hide_headers;
+    ngx_hash_key_t  *hk;
+
+    if (conf->hide_headers == NGX_CONF_UNSET_PTR
+        && conf->pass_headers == NGX_CONF_UNSET_PTR)
+    {
+        conf->hide_headers_hash = prev->hide_headers_hash;
+
+        if (conf->hide_headers_hash.buckets) {
+            return NGX_OK;
+        }
+
+        conf->hide_headers = prev->hide_headers;
+        conf->pass_headers = prev->pass_headers;
+
+    } else {
+        if (conf->hide_headers == NGX_CONF_UNSET_PTR) {
+            conf->hide_headers = prev->hide_headers;
+        }
+
+        if (conf->pass_headers == NGX_CONF_UNSET_PTR) {
+            conf->pass_headers = prev->pass_headers;
+        }
+    }
+
+    if (ngx_array_init(&hide_headers, cf->temp_pool, 4, sizeof(ngx_hash_key_t))
+        != NGX_OK)
+    {
+        return NGX_ERROR;
+    }
+
+    for (h = default_hide_headers; h->len; h++) {
+        hk = ngx_array_push(&hide_headers);
+        if (hk == NULL) {
+            return NGX_ERROR;
+        }
+
+        hk->key = *h;
+        hk->key_hash = ngx_hash_key_lc(h->data, h->len);
+        hk->value = (void *) 1;
+    }
+
+    if (conf->hide_headers != NGX_CONF_UNSET_PTR) {
+
+        h = conf->hide_headers->elts;
+
+        for (i = 0; i < conf->hide_headers->nelts; i++) {
+
+            hk = hide_headers.elts;
+
+            for (j = 0; j < hide_headers.nelts; j++) {
+                if (ngx_strcasecmp(h[i].data, hk[j].key.data) == 0) {
+                    goto exist;
+                }
+            }
+
+            hk = ngx_array_push(&hide_headers);
+            if (hk == NULL) {
+                return NGX_ERROR;
+            }
+
+            hk->key = h[i];
+            hk->key_hash = ngx_hash_key_lc(h[i].data, h[i].len);
+            hk->value = (void *) 1;
+
+        exist:
+
+            continue;
+        }
+    }
+
+    if (conf->pass_headers != NGX_CONF_UNSET_PTR) {
+
+        h = conf->pass_headers->elts;
+        hk = hide_headers.elts;
+
+        for (i = 0; i < conf->pass_headers->nelts; i++) {
+            for (j = 0; j < hide_headers.nelts; j++) {
+
+                if (hk[j].key.data == NULL) {
+                    continue;
+                }
+
+                if (ngx_strcasecmp(h[i].data, hk[j].key.data) == 0) {
+                    hk[j].key.data = NULL;
+                    break;
+                }
+            }
+        }
+    }
+
+    hash->hash = &conf->hide_headers_hash;
+    hash->key = ngx_hash_key_lc;
+    hash->pool = cf->pool;
+    hash->temp_pool = NULL;
+
+    return ngx_hash_init(hash, hide_headers.elts, hide_headers.nelts);
+}
 

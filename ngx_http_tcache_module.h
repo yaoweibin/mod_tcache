@@ -67,6 +67,10 @@ typedef struct {
 
     ngx_uint_t                       status_use_stale;
 
+    ngx_hash_t                       hide_headers_hash;
+    ngx_array_t                     *hide_headers;
+    ngx_array_t                     *pass_headers;
+
     size_t                           default_buffer_size;
 
 } ngx_http_tcache_loc_conf_t;
