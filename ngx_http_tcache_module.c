@@ -212,6 +212,7 @@ static ngx_http_variable_t ngx_http_tcache_variables[] = {
 static ngx_int_t
 ngx_http_tcache_access_handler(ngx_http_request_t *r)
 {
+    time_t                         delta;
     ngx_int_t                      rc;
     ngx_str_t                      cache_key;
     ngx_http_tcache_t             *cache;
@@ -255,9 +256,9 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
         break;
     }
 
-    ctx->cache_control = ctx->request_cache_control(&r->headers_in.headers.part);
+    ctx->cache_control = ctx->parse_cache_control(&r->headers_in.headers.part, NULL, &delta);
 
-    if (ctx->cache_control | TCACHE_CONTROL_NO_CACHE) {
+    if (ctx->cache_control & TCACHE_CONTROL_NO_CACHE) {
         goto bypass;
     }
 
@@ -432,6 +433,7 @@ buffer_append(ngx_buf_t *b, u_char *s, size_t len, ngx_pool_t *pool)
 static ngx_int_t
 ngx_http_tcache_header_filter(ngx_http_request_t *r)
 {
+    time_t                         delta;
     ngx_int_t                      rc;
     ngx_uint_t                     fail_status;
     ngx_http_tcache_t             *cache;
@@ -458,6 +460,26 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     if (ctx->valid == 0) {
         return ngx_http_next_header_filter(r);
     }
+
+    ctx->cache_control |= ctx->parse_cache_control(&r->headers_out.headers.part,
+                                             &r->headers_out.cache_control,
+                                             &delta);
+
+    if ((ctx->cache_control & TCACHE_CONTROL_NO_CACHE) || 
+        (ctx->cache_control & TCACHE_CONTROL_NO_STORE) ||
+         (ctx->cache_control & TCACHE_CONTROL_PRIVATE)) {
+
+        return ngx_http_next_header_filter(r);
+    }
+
+    if (delta) {
+        ctx->valid = delta;
+    }
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "tcache cache_control=0x%xi, valid: %T",
+                  ctx->cache_control, ctx->valid);
+
 
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
