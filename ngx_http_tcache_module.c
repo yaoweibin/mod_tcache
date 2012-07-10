@@ -230,7 +230,8 @@ ngx_http_output_body_filter_pt    ngx_http_next_body_filter;
 
 static ngx_http_variable_t ngx_http_tcache_variables[] = {
 
-    { ngx_string("tcache_status"), NULL, ngx_http_tcache_status_variable, 0, 0, 0 },
+    { ngx_string("tcache_status"),
+      NULL, ngx_http_tcache_status_variable, 0, 0, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
@@ -283,7 +284,8 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
         break;
     }
 
-    ctx->cache_control = ctx->parse_cache_control(&r->headers_in.headers.part, NULL, &delta);
+    ctx->cache_control = ctx->parse_cache_control(&r->headers_in.headers.part,
+                                                  NULL, &delta);
 
     if (ctx->cache_control & TCACHE_CONTROL_NO_CACHE) {
         goto bypass;
@@ -489,8 +491,8 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     }
 
     ctx->cache_control |= ctx->parse_cache_control(&r->headers_out.headers.part,
-                                             &r->headers_out.cache_control,
-                                             &delta);
+                                                   &r->headers_out.cache_control,
+                                                   &delta);
 
     if ((ctx->cache_control & TCACHE_CONTROL_NO_CACHE) || 
         (ctx->cache_control & TCACHE_CONTROL_NO_STORE) ||
@@ -506,7 +508,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache cache_control=0x%xi, valid: %T",
                   ctx->cache_control, ctx->valid);
-
 
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;

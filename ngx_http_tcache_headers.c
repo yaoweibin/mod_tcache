@@ -3,7 +3,8 @@
 #include "ngx_http_tcache_headers.h"
 
 
-static ngx_uint_t ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls, time_t *delta);
+static ngx_uint_t ngx_http_tcache_control(ngx_list_part_t *part,
+    ngx_array_t *cache_controls, time_t *delta);
 
 static ngx_int_t ngx_http_tcache_process_status_line(ngx_http_request_t *r,
     ngx_buf_t *buffer);
@@ -211,6 +212,8 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
     if (cache_controls && cache_controls->nelts) {
 
+        /* This headers come from response */
+
         ccp = cache_controls->elts;
 
         for (i = 0; i < cache_controls->nelts; i++) {
@@ -251,6 +254,25 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
                     }
                 }
             }
+
+            p = ccp[i]->value.data;
+            last = p + ccp[i]->value.len;
+
+            p = ngx_strlcasestrn(p, last, (u_char *) "s-maxage=", 9 - 1);
+            if (p) {
+
+                for (p += 9; p < last; p++) {
+                    if (*p < '0' || *p > '9') {
+                        break;
+                    }
+
+                    if (*p >= '0' && *p <= '9') {
+                        max_age = max_age * 10 + (*p - '0');
+                        continue;
+                    }
+                }
+            }
+
         }
 
         goto end;
@@ -295,6 +317,20 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
                 cache_flag |= TCACHE_CONTROL_PUBLIC;
             }
 
+            p = ngx_strlcasestrn(p, last, (u_char *) "max-age=", 8 - 1);
+            if (p) {
+                for (p += 8; p < last; p++) {
+                    if (*p < '0' || *p > '9') {
+                        break;
+                    }
+
+                    if (*p >= '0' && *p <= '9') {
+                        max_age = max_age * 10 + (*p - '0');
+                        continue;
+                    }
+                }
+            }
+
             continue;
 
         } else if ((h[i].key.len == sizeof("Pragma") - 1)
@@ -307,37 +343,6 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
             }
         }
 
-        p = ngx_strlcasestrn(p, last, (u_char *) "max-age=", 8 - 1);
-        if (p) {
-            for (p += 8; p < last; p++) {
-                if (*p < '0' || *p > '9') {
-                    break;
-                }
-
-                if (*p >= '0' && *p <= '9') {
-                    max_age = max_age * 10 + (*p - '0');
-                    continue;
-                }
-            }
-        }
-
-        p = h[i].value.data;
-        last = p + h[i].value.len;
-
-        p = ngx_strlcasestrn(p, last, (u_char *) "s-maxage=", 9 - 1);
-        if (p) {
-
-            for (p += 9; p < last; p++) {
-                if (*p < '0' || *p > '9') {
-                    break;
-                }
-
-                if (*p >= '0' && *p <= '9') {
-                    max_age = max_age * 10 + (*p - '0');
-                    continue;
-                }
-            }
-        }
     }
 
 end:
