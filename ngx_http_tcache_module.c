@@ -13,6 +13,8 @@ typedef struct {
 } ngx_conf_storage_t;
 
 static ngx_int_t ngx_http_tcache_access_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_tcache_poseponsed_to_access_phase_end(
+    ngx_http_request_t *r);
 
 static void ngx_http_tcache_create_key(ngx_http_tcache_ctx_t *ctx,
     ngx_str_t *key);
@@ -291,6 +293,11 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
         goto bypass;
     }
 
+    rc = ngx_http_tcache_poseponsed_to_access_phase_end(r);
+    if (rc != NGX_OK) {
+        return rc;
+    }
+
     if (ngx_http_complex_value(r, &conf->key, &cache_key) != NGX_OK) {
         return NGX_ERROR;
     }
@@ -334,6 +341,54 @@ bypass:
 
     ctx->bypass = 1;
     return NGX_DECLINED;
+}
+
+
+/* 
+ * This is a dirty hack from srcache, but it's useful to move this handler
+ * to the end of the access phrase
+ * */
+static ngx_int_t
+ngx_http_tcache_poseponsed_to_access_phase_end(ngx_http_request_t *r)
+{
+    ngx_http_phase_handler_t         tmp;
+    ngx_http_phase_handler_t        *ph;
+    ngx_http_phase_handler_t        *cur_ph;
+    ngx_http_phase_handler_t        *last_ph;
+    ngx_http_core_main_conf_t       *cmcf;
+    ngx_http_tcache_main_conf_t     *tmcf;
+
+    tmcf = ngx_http_get_module_main_conf(r, ngx_http_tcache_module);
+
+    if (tmcf->postponed_to_access_phase_end) {
+        return NGX_OK;
+    }
+
+    tmcf->postponed_to_access_phase_end = 1;
+
+    cmcf = ngx_http_get_module_main_conf(r, ngx_http_core_module);
+
+    ph = cmcf->phase_engine.handlers;
+    cur_ph = &ph[r->phase_handler];
+
+    /* we should skip the post_access phase handler here too */
+    last_ph = &ph[cur_ph->next - 2];
+
+    if (cur_ph < last_ph) {
+
+        tmp = *cur_ph;
+
+        memmove(cur_ph, cur_ph + 1,
+                (last_ph - cur_ph) * sizeof(ngx_http_phase_handler_t));
+
+        *last_ph = tmp;
+
+        r->phase_handler--; /* redo the current ph */
+
+        return NGX_DECLINED;
+    }
+
+    return NGX_OK;
 }
 
 
@@ -983,8 +1038,7 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
                               prev->default_buffer_size, 128 * 1024);
 
     ngx_conf_merge_bitmask_value(conf->status_use_stale, prev->status_use_stale,
-                                 (NGX_CONF_BITMASK_SET
-                                  |NGX_HTTP_FT_HTTP_OFF));
+                                 (NGX_CONF_BITMASK_SET | NGX_HTTP_FT_HTTP_OFF));
 
     if (conf->status_use_stale & NGX_HTTP_FT_HTTP_OFF) {
         conf->status_use_stale = NGX_CONF_BITMASK_SET | NGX_HTTP_FT_HTTP_OFF;
@@ -1016,7 +1070,8 @@ ngx_http_tcache_create_main_conf(ngx_conf_t *cf)
     }
 
     /* set by ngx_pcalloc:
-     * headers_in_hash = 0;
+     * tmcf->headers_in_hash = 0;
+     * tmcf->postphoned_to_access_phase_end = 0;
      */
 
     return mcf;

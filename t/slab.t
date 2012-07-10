@@ -59,7 +59,7 @@ TCACHE: MISS
 --- request
     GET /
 --- response_headers
-TCACHE: HIT
+TCACHE: HIT 
 
 === TEST 3: the tcache module, slab, with manager process
 --- main_config

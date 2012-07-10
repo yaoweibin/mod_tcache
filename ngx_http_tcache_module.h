@@ -118,6 +118,7 @@ struct ngx_http_tcache_ctx_s {
 
 typedef struct {
     ngx_hash_t                       headers_in_hash;
+    ngx_uint_t                       postponed_to_access_phase_end;
 } ngx_http_tcache_main_conf_t;
 
 
