@@ -435,6 +435,7 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
                   "tcache process headers: \"%*s\"",
                   cb->last - cb->pos, cb->pos);
 
+    r->headers_out.content_length_n = cb->end - cb->last;
     rc = ctx->process_headers(r, cb);
     if (rc != NGX_OK) {
         return rc;
