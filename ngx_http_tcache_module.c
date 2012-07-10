@@ -532,6 +532,9 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return NGX_ERROR;
     }
 
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "tcache header filter0 \"%V\", %T", &r->uri, ctx->valid);
+
     if (ctx->bypass || ctx->use_cache) {
         return ngx_http_next_header_filter(r);
     }
@@ -546,9 +549,14 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
+    delta = -1;
     ctx->cache_control |= ctx->parse_cache_control(&r->headers_out.headers.part,
                                                    &r->headers_out.cache_control,
                                                    &delta);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                  "tcache cache_control=0x%xi, valid: %T",
+                  ctx->cache_control, delta);
 
     if ((ctx->cache_control & TCACHE_CONTROL_NO_CACHE) || 
         (ctx->cache_control & TCACHE_CONTROL_NO_STORE) ||
@@ -557,13 +565,9 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
-    if (delta) {
+    if (delta >= 0) {
         ctx->valid = delta;
     }
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache cache_control=0x%xi, valid: %T",
-                  ctx->cache_control, ctx->valid);
 
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
@@ -765,14 +769,13 @@ ngx_http_tcache_status_variable(ngx_http_request_t *r,
         v->len = sizeof("BYPASS") - 1;
         v->data = (u_char *) "BYPASS";
 
-    } else if (ctx->store) {
-        v->len = sizeof("MISS") - 1;
-        v->data = (u_char *) "MISS";
-
-    } else {
+    } else if (ctx->use_cache) {
         v->len = sizeof("HIT") - 1;
         v->data = (u_char *) "HIT";
-    } 
+    } else {
+        v->len = sizeof("MISS") - 1;
+        v->data = (u_char *) "MISS";
+    }
 
     v->valid = 1;
     v->no_cacheable = 0;

@@ -203,11 +203,12 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 {
     u_char                          *p, *last;
     time_t                           max_age;
-    ngx_uint_t                       i, cache_flag;
+    ngx_uint_t                       i, has_age, cache_flag;
     ngx_table_elt_t                 *h, **ccp;
 
     h = part->elts;
     cache_flag = 0;
+    has_age = 0;
     max_age = 0;
 
     if (cache_controls && cache_controls->nelts) {
@@ -243,6 +244,8 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
             p = ngx_strlcasestrn(p, last, (u_char *) "max-age=", 8 - 1);
             if (p) {
+                has_age = 1;
+
                 for (p += 8; p < last; p++) {
                     if (*p < '0' || *p > '9') {
                         break;
@@ -260,6 +263,7 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
             p = ngx_strlcasestrn(p, last, (u_char *) "s-maxage=", 9 - 1);
             if (p) {
+                has_age = 1;
 
                 for (p += 9; p < last; p++) {
                     if (*p < '0' || *p > '9') {
@@ -319,6 +323,8 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
             p = ngx_strlcasestrn(p, last, (u_char *) "max-age=", 8 - 1);
             if (p) {
+                has_age = 1;
+
                 for (p += 8; p < last; p++) {
                     if (*p < '0' || *p > '9') {
                         break;
@@ -347,7 +353,7 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
 end:
 
-    if (delta) {
+    if (delta && has_age) {
         *delta = max_age;
     }
 

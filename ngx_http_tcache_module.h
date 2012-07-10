@@ -79,7 +79,7 @@ typedef struct {
 #define TCACHE_CONTROL_NO_CACHE    0x00000001
 #define TCACHE_CONTROL_NO_STORE    0x00000002
 #define TCACHE_CONTROL_PRIVATE     0x00000004
-#define TCACHE_CONTROL_PUBLIC      0x00000005
+#define TCACHE_CONTROL_PUBLIC      0x00000008
 
 
 struct ngx_http_tcache_ctx_s {
