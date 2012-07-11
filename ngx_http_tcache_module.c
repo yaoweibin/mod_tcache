@@ -454,7 +454,9 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     b->start = b->pos = cb->start + h->body_start;
     b->last = b->end = cb->end;
 
-    b->memory = 1;
+    if (r->headers_out.content_length_n > 0) {
+        b->memory = 1;
+    }
 
     b->last_buf = (r == r->main) ? 1: 0;
     b->last_in_chain = 1;
