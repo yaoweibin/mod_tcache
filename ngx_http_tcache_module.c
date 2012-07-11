@@ -529,7 +529,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
     if (ctx == NULL) {
-        return NGX_ERROR;
+        return ngx_http_next_header_filter(r);
     }
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -642,7 +642,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
     if (ctx == NULL) {
-        return NGX_ERROR;
+        return ngx_http_next_body_filter(r, in);
     }
 
     if (ctx->bypass || ctx->use_cache || ctx->valid == 0 || ctx->store == 0) {
