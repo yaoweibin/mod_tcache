@@ -64,6 +64,7 @@ typedef struct {
 
     ngx_array_t                     *valid;
     ngx_array_t                     *bypass;
+    ngx_array_t                     *no_cache;
 
     ngx_uint_t                       status_use_stale;
 

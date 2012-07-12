@@ -139,6 +139,13 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       offsetof(ngx_http_tcache_loc_conf_t, bypass),
       NULL },
 
+    { ngx_string("tcache_no_cache"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
+      ngx_http_set_predicate_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, no_cache),
+      NULL },
+
     { ngx_string("tcache_methods"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_conf_set_bitmask_slot,
@@ -556,6 +563,18 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->valid = ngx_http_file_cache_valid(conf->valid, r->headers_out.status);
     if (ctx->valid == 0) {
         return ngx_http_next_header_filter(r);
+    }
+
+    switch (ngx_http_test_predicates(r, conf->no_cache)) {
+
+    case NGX_ERROR:
+        return NGX_ERROR;
+
+    case NGX_DECLINED:
+        return ngx_http_next_header_filter(r);
+
+    default: /* NGX_OK */
+        break;
     }
 
     expires = ngx_http_tcache_parse_expires_time(r);
@@ -1028,6 +1047,7 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     conf->enable = NGX_CONF_UNSET;
     conf->valid = NGX_CONF_UNSET_PTR;
     conf->bypass = NGX_CONF_UNSET_PTR;
+    conf->no_cache = NGX_CONF_UNSET_PTR;
     conf->default_expires = NGX_CONF_UNSET;
     conf->grace = NGX_CONF_UNSET;
 
@@ -1077,6 +1097,7 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
 
     ngx_conf_merge_ptr_value(conf->valid, prev->valid, NULL);
     ngx_conf_merge_ptr_value(conf->bypass, prev->bypass, NULL);
+    ngx_conf_merge_ptr_value(conf->no_cache, prev->no_cache, NULL);
     ngx_conf_merge_sec_value(conf->default_expires, prev->default_expires, 60);
     ngx_conf_merge_sec_value(conf->grace, prev->grace, 60);
     ngx_conf_merge_size_value(conf->default_buffer_size,
