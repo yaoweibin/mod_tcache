@@ -361,6 +361,28 @@ end:
 }
 
 
+time_t
+ngx_http_tcache_parse_expires_time(ngx_http_request_t *r)
+{
+    time_t                           expires;
+    ngx_table_elt_t                 *h;
+
+    h = r->headers_out.expires;
+
+    if (h != NULL && h->hash != 0) {
+        expires = ngx_http_parse_time(h->value.data, h->value.len);
+
+        if (expires == NGX_ERROR) {
+            return 0;
+        }
+
+        return expires;
+    }
+
+    return 0;
+}
+
+
 static ngx_int_t
 ngx_http_tcache_process_status_line(ngx_http_request_t *r, ngx_buf_t *buffer)
 {

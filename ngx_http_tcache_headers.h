@@ -24,4 +24,6 @@ ngx_int_t ngx_http_tcache_hide_headers_hash(ngx_conf_t *cf,
     ngx_http_tcache_loc_conf_t *conf, ngx_http_tcache_loc_conf_t *prev,
     ngx_str_t *default_hide_headers, ngx_hash_init_t *hash);
 
+time_t ngx_http_tcache_parse_expires_time(ngx_http_request_t *r);
+
 #endif

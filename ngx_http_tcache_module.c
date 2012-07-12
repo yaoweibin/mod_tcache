@@ -520,7 +520,7 @@ buffer_append(ngx_buf_t *b, u_char *s, size_t len, ngx_pool_t *pool)
 static ngx_int_t
 ngx_http_tcache_header_filter(ngx_http_request_t *r)
 {
-    time_t                         delta;
+    time_t                         delta, expires;
     ngx_int_t                      rc;
     ngx_uint_t                     fail_status;
     ngx_http_tcache_t             *cache;
@@ -551,6 +551,11 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
+    expires = ngx_http_tcache_parse_expires_time(r);
+    if (expires) {
+        ctx->valid = expires - ngx_time();
+    }
+
     delta = -1;
     ctx->cache_control |= ctx->parse_cache_control(&r->headers_out.headers.part,
                                                    &r->headers_out.cache_control,
@@ -569,6 +574,10 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
 
     if (delta >= 0) {
         ctx->valid = delta;
+    }
+
+    if (ctx->valid <= 0) {
+        return ngx_http_next_header_filter(r);
     }
 
     ctx->status = r->headers_out.status;
