@@ -85,6 +85,7 @@ typedef struct {
 struct ngx_http_tcache_ctx_s {
     time_t                           valid;
     ngx_uint_t                       status;
+    time_t                           age;
     time_t                           grace;
     time_t                           last_modified;
     off_t                            content_length;

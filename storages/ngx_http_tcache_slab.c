@@ -196,6 +196,8 @@ use_cache:
     
     ctx->node = tn;
     ctx->cache_length = tn->length;
+    ctx->valid = tn->expires - ngx_time();
+    ctx->age = ngx_time() - tn->date;
 
     buf = ngx_create_temp_buf(ctx->pool, tn->length);
     if (buf == NULL) {

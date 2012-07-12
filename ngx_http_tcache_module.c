@@ -30,6 +30,10 @@ static ngx_uint_t ngx_http_tcache_get_fail_status(ngx_uint_t status);
 static ngx_int_t ngx_http_tcache_status_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
+static ngx_int_t ngx_http_tcache_age_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
+
+
 static char *ngx_http_tcache_enable(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
 static char *ngx_http_tcache_key(ngx_conf_t *cf, ngx_command_t *cmd,
@@ -234,6 +238,9 @@ static ngx_http_variable_t ngx_http_tcache_variables[] = {
 
     { ngx_string("tcache_status"),
       NULL, ngx_http_tcache_status_variable, 0, 0, 0 },
+
+    { ngx_string("tcache_age"),
+      NULL, ngx_http_tcache_age_variable, 0, 0, 0 },
 
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
@@ -787,6 +794,29 @@ ngx_http_tcache_status_variable(ngx_http_request_t *r,
         v->len = sizeof("MISS") - 1;
         v->data = (u_char *) "MISS";
     }
+
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_tcache_age_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_http_tcache_ctx_t         *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
+    if (ctx == NULL || ctx->age == 0) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ngx_pnalloc(r->pool, 32);
+    v->len = ngx_snprintf(v->data, 32, "%T", ctx->age) - v->data;
 
     v->valid = 1;
     v->no_cacheable = 0;
