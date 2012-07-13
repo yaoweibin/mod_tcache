@@ -72,6 +72,7 @@ typedef struct {
     ngx_array_t                     *hide_headers;
     ngx_array_t                     *pass_headers;
 
+    size_t                           max_size;
     size_t                           default_buffer_size;
 
 } ngx_http_tcache_loc_conf_t;

@@ -195,6 +195,13 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       0,
       NULL },
 
+    { ngx_string("tcache_store_max_size"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_size_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_tcache_loc_conf_t, max_size),
+      NULL },
+
     { ngx_string("tcache_store_buffer_size"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_conf_set_size_slot,
@@ -606,6 +613,10 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
+    if (r->headers_out.content_length_n > (off_t) conf->max_size) {
+        return ngx_http_next_header_filter(r);
+    }
+
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
     ctx->grace = conf->grace;
@@ -707,6 +718,11 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
             ctx->cache_length += len;
             ctx->content_length += len;
+
+            if (ctx->cache_length > conf->max_size) {
+                ctx->store = 0;
+                return ngx_http_next_body_filter(r, in);
+            }
         }
 
         if (b->last_buf) {
@@ -1054,6 +1070,7 @@ ngx_http_tcache_create_loc_conf(ngx_conf_t *cf)
     conf->hide_headers = NGX_CONF_UNSET_PTR;
     conf->pass_headers = NGX_CONF_UNSET_PTR;
 
+    conf->max_size = NGX_CONF_UNSET;
     conf->default_buffer_size = NGX_CONF_UNSET;
 
     return conf;
@@ -1100,6 +1117,7 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_ptr_value(conf->no_cache, prev->no_cache, NULL);
     ngx_conf_merge_sec_value(conf->default_expires, prev->default_expires, 60);
     ngx_conf_merge_sec_value(conf->grace, prev->grace, 60);
+    ngx_conf_merge_size_value(conf->max_size, prev->max_size, 1024 * 1024);
     ngx_conf_merge_size_value(conf->default_buffer_size,
                               prev->default_buffer_size, 128 * 1024);
 
