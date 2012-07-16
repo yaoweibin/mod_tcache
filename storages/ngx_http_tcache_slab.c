@@ -145,7 +145,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
     if (lookup) {
 
-        if (ctx->valid && (tn->status != ctx->status)) {
+        if (tn->status != ctx->status) {
 
             if (ctx->can_use_stale) {
 

@@ -26,6 +26,8 @@ static ngx_int_t ngx_http_tcache_body_filter(ngx_http_request_t *r,
     ngx_chain_t *in);
 
 static ngx_uint_t ngx_http_tcache_get_fail_status(ngx_uint_t status);
+static ngx_int_t ngx_http_tcache_send_stale_cache(ngx_http_request_t *r,
+    ngx_http_tcache_ctx_t *ctx);
 
 static ngx_int_t ngx_http_tcache_status_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
@@ -564,6 +566,30 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
+    cache = conf->shm_zone->data;
+
+    fail_status = ngx_http_tcache_get_fail_status(ctx->status);
+    if (fail_status & conf->status_use_stale) {
+        ctx->can_use_stale = 1;
+
+        ngx_shmtx_lock(&cache->shpool->mutex);
+        rc = cache->storage->get(cache, ctx, 1);
+        ngx_shmtx_unlock(&cache->shpool->mutex);
+
+        switch (rc) {
+
+        case NGX_OK:
+            return ngx_http_next_header_filter(r);
+
+        case NGX_AGAIN:
+            ctx->use_stale_cache = 1;
+            return NGX_OK;
+
+        default: /* NGX_DECLINED */
+            break;
+        }
+    }
+
     ctx->valid = ngx_http_file_cache_valid(conf->valid, r->headers_out.status);
     if (ctx->valid == 0) {
         return ngx_http_next_header_filter(r);
@@ -625,12 +651,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache header filter \"%V\", %T", &r->uri, ctx->valid);
 
-    fail_status = ngx_http_tcache_get_fail_status(ctx->status);
-    if (fail_status & conf->status_use_stale) {
-        ctx->can_use_stale = 1;
-    }
-
-    cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
     rc = cache->storage->get(cache, ctx, 1);
     ngx_shmtx_unlock(&cache->shpool->mutex);
@@ -642,9 +662,8 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
 
     case NGX_AGAIN:
-        /* TODO: return the stale cache */
         ctx->use_stale_cache = 1;
-        break;
+        return NGX_OK;
 
     case NGX_ERROR:
         return NGX_ERROR;
@@ -692,6 +711,10 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
     if (ctx == NULL) {
         return ngx_http_next_body_filter(r, in);
+    }
+
+    if (ctx->use_stale_cache) {
+        return ngx_http_tcache_send_stale_cache(r, ctx);
     }
 
     if (ctx->bypass || ctx->use_cache || ctx->valid == 0 || ctx->store == 0) {
@@ -804,6 +827,49 @@ ngx_http_tcache_get_fail_status(ngx_uint_t status)
     }
 
     return ft;
+}
+
+
+static ngx_int_t
+ngx_http_tcache_send_stale_cache(ngx_http_request_t *r,
+    ngx_http_tcache_ctx_t *ctx)
+{
+    ngx_int_t                      rc;
+    ngx_uint_t                     old_status;
+    ngx_http_tcache_t             *cache;
+    ngx_http_tcache_loc_conf_t    *conf;
+
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
+
+    old_status = r->headers_out.status;
+
+    ngx_http_clean_header(r);
+
+    cache = conf->shm_zone->data;
+    ngx_shmtx_lock(&cache->shpool->mutex);
+    rc = cache->storage->get(cache, ctx, 0);
+    ngx_shmtx_unlock(&cache->shpool->mutex);
+
+    switch (rc) {
+
+    case NGX_OK:
+
+        return ngx_http_tcache_send(r, ctx);
+
+    case NGX_ERROR:
+        return NGX_ERROR;
+
+    case NGX_DECLINED:
+        /* This should not happen, if it's true, then finalize this response */
+        break;
+
+    default:
+        break;
+    }
+
+    ngx_http_finalize_request(r, old_status);
+
+    return NGX_DONE;
 }
 
 
