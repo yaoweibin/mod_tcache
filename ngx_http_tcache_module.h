@@ -59,7 +59,7 @@ typedef struct {
 
     ngx_uint_t                       methods;
     time_t                           default_expires;
-    /* the the grace time period after expires */
+    /* the the grace time period after node expires */
     time_t                           grace;
 
     ngx_array_t                     *valid;
@@ -131,7 +131,7 @@ struct ngx_http_tcache_node_s {
 
     u_char                          *key;
     time_t                           expires;
-    time_t                           grace;
+    time_t                           stale;
     time_t                           last_modified;
     time_t                           date;
     ngx_uint_t                       status;

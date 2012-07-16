@@ -555,9 +555,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache header filter0 \"%V\", %T", &r->uri, ctx->valid);
-
     if (ctx->bypass || ctx->use_cache) {
         return ngx_http_next_header_filter(r);
     }
@@ -620,6 +617,10 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->status = r->headers_out.status;
     ctx->last_modified = r->headers_out.last_modified_time;
     ctx->grace = conf->grace;
+
+    if (ctx->grace < ctx->valid) {
+        ctx->grace = ctx->valid + 60;
+    }
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                   "tcache header filter \"%V\", %T", &r->uri, ctx->valid);
@@ -1116,7 +1117,7 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     ngx_conf_merge_ptr_value(conf->bypass, prev->bypass, NULL);
     ngx_conf_merge_ptr_value(conf->no_cache, prev->no_cache, NULL);
     ngx_conf_merge_sec_value(conf->default_expires, prev->default_expires, 60);
-    ngx_conf_merge_sec_value(conf->grace, prev->grace, 60);
+    ngx_conf_merge_sec_value(conf->grace, prev->grace, 120);
     ngx_conf_merge_size_value(conf->max_size, prev->max_size, 1024 * 1024);
     ngx_conf_merge_size_value(conf->default_buffer_size,
                               prev->default_buffer_size, 128 * 1024);
