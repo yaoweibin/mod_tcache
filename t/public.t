@@ -17,7 +17,7 @@ run_tests();
 __DATA__
 
 
-=== TEST 1: basic fetch (cache miss), and not stored due to Cache-Control: public
+=== TEST 1: basic fetch (cache miss), and stored due to Cache-Control: public
 --- http_config
     tcache_shm_zone test;
 

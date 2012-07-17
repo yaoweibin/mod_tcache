@@ -151,7 +151,6 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
                 if (tn->use_stale) {
 
-                    /* Try once again */
                     /*TODO: try interval*/
                     if ((now - tn->last_try) > 3) {
 
@@ -308,6 +307,7 @@ ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
     }
 
     ctx->node = tn;
+    tn->status = ctx->status;
     tn->date = ngx_time();
     tn->expires = tn->date + ctx->valid;
     tn->stale =  tn->expires + ctx->grace;

@@ -416,9 +416,9 @@ ngx_http_tcache_process_status_line(ngx_http_request_t *r, ngx_buf_t *buffer)
 
     ngx_memcpy(r->headers_out.status_line.data, status.start, len);
 
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache status %ui \"%V\"",
-                   r->headers_out.status, &r->headers_out.status_line);
+    ngx_log_debug3(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "tcache status %p, %ui \"%V\"",
+                   r, r->headers_out.status, &r->headers_out.status_line);
 
     if (buffer->pos == buffer->last) {
         return NGX_OK;

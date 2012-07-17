@@ -1,0 +1,291 @@
+# vi:filetype=
+
+use lib 'lib';
+use Test::Nginx::Socket;
+
+#repeat_each(2);
+
+plan tests => repeat_each() * 3 * blocks();
+
+no_shuffle();
+
+run_tests();
+
+__DATA__
+
+
+=== TEST 1: basic fetch (cache miss), and stored
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1s;
+        tcache_grace 60s;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.say("hello")
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: MISS
+--- response_body
+hello
+
+
+=== TEST 2: basic fetch (cache hit, use the stale cache)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200  1s;
+        tcache_grace 60s;
+        tcache_use_stale  http_500;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(500)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 3: basic fetch (cache miss, don't use the stale cache)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(500)
+        ';
+    }
+--- request
+GET /foo
+--- error_code: 500
+--- response_headers
+!TCACHE
+!FOO
+
+
+=== TEST 4: basic fetch (cache miss, 502 can't use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(502)
+        ';
+    }
+--- request
+GET /foo
+--- error_code: 502
+--- response_headers
+!TCACHE
+!FOO
+
+
+=== TEST 5: basic fetch (cache hit, 502 can use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(502)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 6: basic fetch (cache hit, 503 can use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(503)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 7: basic fetch (cache hit, 504 can use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(504)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 8: basic fetch (cache hit, 404 can use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(404)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 9: basic fetch (cache hit, 408 can use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(404)
+        ';
+    }
+--- request
+GET /foo
+--- response_headers
+TCACHE: HIT
+--- response_body
+hello
+
+
+=== TEST 10: basic fetch (cache MISS, 403 can't use the use_stale)
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /foo {
+        tcache test;
+        tcache_valid 200    1h;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit(403)
+        ';
+    }
+--- request
+GET /foo
+--- error_code: 403
+--- response_headers
+!TCACHE: HIT
+!FOO
+
+
+=== TEST 11: basic fetch (cache miss), and stored
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /bar {
+        tcache test;
+        tcache_valid 200    1s;
+        tcache_grace 2s;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.say("hello")
+        ';
+    }
+--- request
+GET /bar
+--- response_headers
+TCACHE: MISS
+--- response_body
+hello
+
+
+=== TEST 12: basic fetch (cache miss), sleep more than 2 second, grace expired
+--- http_config
+    tcache_shm_zone test;
+
+--- config
+    location /bar {
+        tcache test;
+        tcache_valid 200    1s;
+        tcache_grace 2s;
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.say("world")
+        ';
+    }
+--- request
+GET /bar
+--- response_headers
+TCACHE: MISS
+--- response_body
+world
+
