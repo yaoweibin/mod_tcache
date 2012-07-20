@@ -92,7 +92,7 @@ static ngx_conf_bitmask_t  ngx_http_tcache_use_stale_masks[] = {
     { ngx_string("http_504"), NGX_HTTP_FT_HTTP_504 },
     { ngx_string("http_404"), NGX_HTTP_FT_HTTP_404 },
     { ngx_string("http_408"), NGX_HTTP_FT_HTTP_408 },
-    { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING },
+    { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING }, //TODO
     { ngx_string("off"),      NGX_HTTP_FT_HTTP_OFF},
     { ngx_null_string, 0 }
 };
@@ -120,6 +120,7 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       0,
       NULL },
 
+    /*TODO: test*/
     { ngx_string("tcache_key"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_tcache_key,
@@ -127,6 +128,7 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       0,
       NULL },
 
+    /*TODO: test the any*/
     { ngx_string("tcache_valid"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_file_cache_valid_set_slot,
@@ -576,10 +578,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     if (fail_status & conf->status_use_stale) {
         ctx->can_use_stale = 1;
 
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                "tcache header filter2 \"%V\", status=%ui",
-                &r->uri, r->headers_out.status);
-
         ngx_shmtx_lock(&cache->shpool->mutex);
         rc = cache->storage->get(cache, ctx, 1);
         ngx_shmtx_unlock(&cache->shpool->mutex);
@@ -587,9 +585,6 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         switch (rc) {
 
         case NGX_OK:
-            ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                    "tcache header filter3 \"%V\", status=%ui",
-                    &r->uri, r->headers_out.status);
 
             return ngx_http_next_header_filter(r);
 

@@ -1,4 +1,0 @@
-export LIBMDB_INC="/path/to/tair/include /path/to/tair/include/tbsys /path/to/tair/include/tbnet"
-export LIBMDB_LIB="/path/to/tair/lib"
-
-./configure --add-module=/path/to/mod_tcache
