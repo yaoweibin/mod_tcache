@@ -104,8 +104,8 @@ struct ngx_http_tcache_ctx_s {
     u_char                          *payload;
 
     ngx_pool_t                      *pool;
+    ngx_log_t                       *log;
     
-
     ngx_uint_t                       cache_control;
 
     unsigned                         updating_use_stale:1;

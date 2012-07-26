@@ -4,7 +4,7 @@
 #include "ngx_http_tcache_headers.h"
 
 
-#define DEFAULT_KEY "$scheme$host$request_uri"
+#define DEFAULT_KEY "$scheme$host$uri$is_args$args"
 
 
 typedef struct {
@@ -35,6 +35,8 @@ static ngx_int_t ngx_http_tcache_status_variable(ngx_http_request_t *r,
 static ngx_int_t ngx_http_tcache_age_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
+static ngx_int_t ngx_http_tcache_stale_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data);
 
 static char *ngx_http_tcache_enable(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
@@ -259,6 +261,9 @@ static ngx_http_variable_t ngx_http_tcache_variables[] = {
     { ngx_string("tcache_age"),
       NULL, ngx_http_tcache_age_variable, 0, 0, 0 },
 
+    { ngx_string("tcache_stale"),
+      NULL, ngx_http_tcache_stale_variable, 0, 0, 0 },
+
     { ngx_null_string, NULL, NULL, 0, 0, 0 }
 };
 
@@ -282,6 +287,7 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
                   "tcache request \"%V\"", &r->uri);
 
     ctx->pool = r->pool;
+    ctx->log = r->connection->log;
 
     if (ngx_http_tcache_headers_init(ctx) != NGX_OK) {
         return NGX_ERROR;
@@ -561,6 +567,11 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
                    "tcache header filter \"%V\", status=%ui",
                    &r->uri, r->headers_out.status);
 
+    conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
+    if (!conf->enable) {
+        return ngx_http_next_header_filter(r);
+    }
+
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
     if (ctx == NULL) {
         return ngx_http_next_header_filter(r);
@@ -570,16 +581,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
         return ngx_http_next_header_filter(r);
     }
 
-    conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
-    if (!conf->enable) {
-        return ngx_http_next_header_filter(r);
-    }
-
     cache = conf->shm_zone->data;
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache header filter \"%V\", status=%ui",
-                   &r->uri, r->headers_out.status);
 
     fail_status = ngx_http_tcache_get_fail_status(r->headers_out.status);
     if (fail_status & conf->status_use_stale) {
@@ -934,6 +936,29 @@ ngx_http_tcache_age_variable(ngx_http_request_t *r,
 
     v->data = ngx_pnalloc(r->pool, 32);
     v->len = ngx_snprintf(v->data, 32, "%T", ctx->age) - v->data;
+
+    v->valid = 1;
+    v->no_cacheable = 0;
+    v->not_found = 0;
+
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_tcache_stale_variable(ngx_http_request_t *r,
+    ngx_http_variable_value_t *v, uintptr_t data)
+{
+    ngx_http_tcache_ctx_t         *ctx;
+
+    ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
+    if (ctx == NULL) {
+        v->not_found = 1;
+        return NGX_OK;
+    }
+
+    v->data = ngx_pnalloc(r->pool, 2);
+    v->len = ngx_snprintf(v->data, 2, "%ud", ctx->use_stale_cache) - v->data;
 
     v->valid = 1;
     v->no_cacheable = 0;
