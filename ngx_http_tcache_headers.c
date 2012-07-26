@@ -213,7 +213,7 @@ ngx_http_tcache_control(ngx_list_part_t *part, ngx_array_t *cache_controls,
 
     if (cache_controls && cache_controls->nelts) {
 
-        /* This headers come from response */
+        /* These headers come from response */
 
         ccp = cache_controls->elts;
 
@@ -370,8 +370,8 @@ ngx_http_tcache_parse_expires_time(ngx_http_request_t *r)
     h = r->headers_out.expires;
 
     if (h != NULL && h->hash != 0) {
-        expires = ngx_http_parse_time(h->value.data, h->value.len);
 
+        expires = ngx_http_parse_time(h->value.data, h->value.len);
         if (expires == NGX_ERROR) {
             return 0;
         }
@@ -559,11 +559,11 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
     u_char                                *header_start, *body_start;
     ngx_buf_t                             *b;
     ngx_str_t                             *status_line;
-    ngx_uint_t                            status, i;
-    ngx_list_part_t                      *part;
-    ngx_table_elt_t                      *header;
-    ngx_http_tcache_loc_conf_t           *conf;
-    ngx_http_tcache_content_header_t     *ch;
+    ngx_uint_t                             status, i;
+    ngx_list_part_t                       *part;
+    ngx_table_elt_t                       *header;
+    ngx_http_tcache_loc_conf_t            *conf;
+    ngx_http_tcache_content_header_t      *ch;
 
     if (r->headers_out.last_modified_time != -1) {
         if (r->headers_out.status != NGX_HTTP_OK
@@ -693,8 +693,7 @@ ngx_http_tcache_store_headers(ngx_http_request_t *r, ngx_buf_t *buffer)
     if ((size_t)(b->end - b->last) < len) {
 
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                      "tcache store headers, not enough buffer.",
-                      ngx_buf_size(b), len);
+                      "tcache store headers, not enough buffer.");
 
         return NGX_ERROR;
     }

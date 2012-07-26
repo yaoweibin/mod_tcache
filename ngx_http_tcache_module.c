@@ -385,7 +385,7 @@ bypass:
 
 
 /* 
- * This is a dirty hack from srcache, but it's useful to move this handler
+ * This is a dirty hack patch from srcache, but it's useful to move this handler
  * to the end of the access phrase
  * */
 static ngx_int_t
@@ -455,13 +455,13 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     node = ctx->node;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache send request \"%V\"", &r->uri);
+                   "tcache send request \"%V\"", &r->uri);
 
     cb = ctx->cache_content;
     h = (ngx_http_tcache_content_header_t *) cb->start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache send request header_start: %z, body_start: %z",
+                   "tcache send request header_start: %uz, body_start: %uz",
                    h->header_start, h->body_start);
 
     if (h->header_start >= h->body_start) {
@@ -472,8 +472,8 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     cb->last = cb->start + h->body_start;
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache process headers: \"%*s\"",
-                  cb->last - cb->pos, cb->pos);
+                   "tcache process headers: \"%*s\"",
+                   cb->last - cb->pos, cb->pos);
 
     r->headers_out.content_length_n = cb->end - cb->last;
     rc = ctx->process_headers(r, cb);
@@ -507,7 +507,7 @@ ngx_http_tcache_send(ngx_http_request_t *r, ngx_http_tcache_ctx_t *ctx)
     rc = ngx_http_output_filter(r, &out);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache send \"%V\", rc=%i", &r->uri, rc);
+                   "tcache send \"%V\", rc=%i", &r->uri, rc);
 
     if (rc == NGX_ERROR) {
         r->connection->error = 1;
@@ -598,6 +598,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
             return ngx_http_next_header_filter(r);
 
         case NGX_AGAIN:
+
             ctx->use_stale_cache = 1;
             return NGX_OK;
 
@@ -634,8 +635,8 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
                                                    &delta);
 
     ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache cache_control=0x%xi, valid: %T",
-                  ctx->cache_control, delta);
+                   "tcache cache_control=0x%uxi, valid: %T",
+                   ctx->cache_control, delta);
 
     if ((ctx->cache_control & TCACHE_CONTROL_NO_CACHE) || 
         (ctx->cache_control & TCACHE_CONTROL_NO_STORE) ||
@@ -707,7 +708,7 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ctx->cache_length = ngx_buf_size(ctx->cache_content);
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                   "tcache header filter buffer: %z", ctx->cache_length);
+                   "tcache header filter buffer: %uz", ctx->cache_length);
 
     return ngx_http_next_header_filter(r);
 }
@@ -750,7 +751,7 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
             len = ngx_buf_size(b);
 
             ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                           "tcache body filter buffer: %z", len);
+                           "tcache body filter buffer: %uz", len);
 
             if (buffer_append(ctx->cache_content, b->pos, len, r->pool) == NULL) {
                 return NGX_ERROR;
@@ -782,11 +783,14 @@ ngx_http_tcache_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
         }
 
         ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                       "tcache body total single buffer: %z", ctx->cache_length);
+                       "tcache body total single buffer: %uz",
+                       ctx->cache_length);
 
         if ((size_t)ngx_buf_size(ctx->cache_content) != ctx->cache_length) {
+
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                           "tcache invalid cache_length");
+
             return ngx_http_next_body_filter(r, in);
         }
 
@@ -856,7 +860,7 @@ ngx_http_tcache_send_stale_cache(ngx_http_request_t *r,
     old_status = r->headers_out.status;
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
-                  "tcache send stale cache: \"%V\"", &r->uri);
+                   "tcache send stale cache: \"%V\"", &r->uri);
 
     ngx_http_clean_header(r);
     r->err_status = 0;
@@ -874,6 +878,8 @@ ngx_http_tcache_send_stale_cache(ngx_http_request_t *r,
         if (ngx_http_tcache_send(r, ctx) == NGX_OK) {
             return NGX_DONE;
         }
+
+        break;
 
     case NGX_ERROR:
         return NGX_ERROR;
@@ -907,9 +913,11 @@ ngx_http_tcache_status_variable(ngx_http_request_t *r,
         v->data = (u_char *) "BYPASS";
 
     } else if (ctx->use_cache) {
+
         v->len = sizeof("HIT") - 1;
         v->data = (u_char *) "HIT";
     } else {
+
         v->len = sizeof("MISS") - 1;
         v->data = (u_char *) "MISS";
     }
@@ -1080,7 +1088,7 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     if (max_size > (off_t) NGX_MAX_SIZE_T_VALUE) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
                                "Your OS is 32bits, you should specify the size"
-                               " less than \"%z\"", NGX_MAX_SIZE_T_VALUE);
+                               " less than \"%uz\"", NGX_MAX_SIZE_T_VALUE);
             return NGX_CONF_ERROR;
     }
 
@@ -1112,8 +1120,8 @@ ngx_http_tcache_shm_zone(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     if (shm_zone->data) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                        "tcache_shm_zone \"%V\" is duplicately initialized",
-                        &name);
+                           "tcache_shm_zone \"%V\" is duplicately initialized",
+                           &name);
         return NGX_CONF_ERROR;
     }
 
@@ -1139,7 +1147,7 @@ ngx_http_tcache_get_storage(ngx_str_t *type)
         
         if (storages[i].name.len == type->len
             && ngx_strncasecmp(storages[i].name.data,
-                           type->data, type->len) == 0) {
+                               type->data, type->len) == 0) {
 
             return storages[i].value;
         }
@@ -1240,8 +1248,7 @@ ngx_http_tcache_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     hash.name = "tcache_store_hide_headers_hash";
 
     if (ngx_http_tcache_hide_headers_hash(cf, conf,
-        prev, ngx_http_tcache_hide_headers, &hash)
-        != NGX_OK)
+        prev, ngx_http_tcache_hide_headers, &hash) != NGX_OK)
     {
         return NGX_CONF_ERROR;
     }
@@ -1326,6 +1333,7 @@ ngx_http_tcache_add_variables(ngx_conf_t *cf)
     ngx_http_variable_t *var, *v;
 
     for (v = ngx_http_tcache_variables; v->name.len; v++) {
+
         var = ngx_http_add_variable(cf, &v->name, v->flags);
         if (var == NULL) {
             return NGX_ERROR;

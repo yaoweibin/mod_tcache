@@ -186,6 +186,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
         if (tn->stale > now) {
 
             if (tn->use_stale) {
+
                 /* Try once again */
                 if ((now - tn->last_try) > 3) {
                     tn->last_try = now;
@@ -203,6 +204,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
                     return NGX_DECLINED;
 
                 } else {
+
                     /* Try once again */
                     if ((now - tn->last_try) > 3) {
                         tn->last_try = now;
@@ -240,7 +242,8 @@ use_cache:
 
 
 static ngx_http_tcache_node_t *
-ngx_http_tcache_slab_create(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
+ngx_http_tcache_slab_create(ngx_http_tcache_t *cache,
+    ngx_http_tcache_ctx_t *ctx)
 {
     ngx_slab_pool_t                   *shpool;
     ngx_http_tcache_node_t            *tn;
@@ -356,10 +359,10 @@ init_node:
     ctx->node = tn;
     tn->status = ctx->status;
     tn->date = ngx_time();
+    tn->last_modified = ctx->last_modified;
     tn->last_try = ngx_time();
     tn->expires = tn->date + ctx->valid;
-    tn->stale =  tn->expires + ctx->grace;
-    tn->last_modified = ctx->last_modified;
+    tn->stale = tn->expires + ctx->grace;
 
     tn->use_stale = 0;
     tn->updating = 0;
@@ -383,9 +386,6 @@ ngx_http_tcache_slab_delete(ngx_http_tcache_t *cache,
     if (tn->length != 0 && tn->payload) {
         ngx_slab_free_locked(shpool, tn->payload);
     }
-
-    ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cache->log, 0,
-                   "http tcache expire delete: \"%p\"", &index->queue);
 
     ngx_queue_remove(&index->queue);
     ngx_rbtree_delete(&sh->rbtree, &index->node);

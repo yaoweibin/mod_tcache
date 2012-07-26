@@ -93,7 +93,8 @@ struct ngx_http_tcache_ctx_s {
     ngx_str_t                        key_string;
     u_char                           key[NGX_HTTP_CACHE_KEY_LEN];
 
-    ngx_uint_t                     (*parse_cache_control)(ngx_list_part_t *part, ngx_array_t *cache_controls, time_t *delta);
+    ngx_uint_t                     (*parse_cache_control)(ngx_list_part_t *part,
+                                    ngx_array_t *cache_controls, time_t *delta);
     ngx_int_t                      (*process_headers)(ngx_http_request_t *r,
                                                       ngx_buf_t *buffer);
     ngx_int_t                      (*store_headers)(ngx_http_request_t *r,
@@ -130,14 +131,12 @@ struct ngx_http_tcache_node_s {
     void                            *index;
 
     u_char                          *key;
+    ngx_uint_t                       status;
+    time_t                           date;
+    time_t                           last_modified;
+    time_t                           last_try;
     time_t                           expires;
     time_t                           stale;
-    time_t                           last_modified;
-    time_t                           date;
-    ngx_uint_t                       status;
-
-    time_t                           last_try;
-    ngx_uint_t                       fall_count;
 
     unsigned                         use_stale:1;
     unsigned                         updating:1;
