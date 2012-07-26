@@ -42,7 +42,7 @@ Turn on this tcache module. It will store and fetch the HTTP response to and fro
 
 Syntax: **tcache_key** `key_string`
 
-Default: `$scheme$host$request_uri`
+Default: `$scheme$host$uri$is_args$args`
 
 Context: `http, server, location`
 
@@ -59,7 +59,8 @@ Sets caching time for different response codes. For example, the following direc
 
     tcache_valid 200 302 10m;
     tcache_valid 404      1m;
-    set 10 minutes of caching for responses with codes 200 and 302, and 1 minute for responses with code 404.
+
+set 10 minutes of caching for responses with codes 200 and 302, and 1 minute for responses with code 404.
 
 If only caching time is specified
 
@@ -124,7 +125,7 @@ Default: `120s`
 
 Context: `http, server, location`
 
-Specify the grace time for the cache record. It should be larger than the expires time. This module will still keep the record in the grace time while it already expire.
+Specify the grace time for the cache record. It should be larger than the expires time. This module will still keep the record in the grace time while it already expires.
 
 
 Syntax: **tcache_use_stale** `updating | http_500 | http_502 | http_503 | http_504 | http_404 | off`
