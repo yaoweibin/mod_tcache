@@ -121,7 +121,6 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       0,
       NULL },
 
-    /*TODO: test*/
     { ngx_string("tcache_key"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
       ngx_http_tcache_key,
@@ -129,7 +128,6 @@ static ngx_command_t  ngx_http_tcache_commands[] = {
       0,
       NULL },
 
-    /*TODO: test the any*/
     { ngx_string("tcache_valid"),
       NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_1MORE,
       ngx_http_file_cache_valid_set_slot,
