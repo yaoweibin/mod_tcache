@@ -92,7 +92,7 @@ static ngx_conf_bitmask_t  ngx_http_tcache_use_stale_masks[] = {
     { ngx_string("http_504"), NGX_HTTP_FT_HTTP_504 },
     { ngx_string("http_404"), NGX_HTTP_FT_HTTP_404 },
     { ngx_string("http_408"), NGX_HTTP_FT_HTTP_408 },
-    { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING }, //TODO
+    { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING },
     { ngx_string("off"),      NGX_HTTP_FT_HTTP_OFF},
     { ngx_null_string, 0 }
 };
@@ -338,6 +338,10 @@ ngx_http_tcache_access_handler(ngx_http_request_t *r)
 
     ngx_http_tcache_create_key(ctx, &cache_key);
 
+    if (conf->status_use_stale & NGX_HTTP_FT_HTTP_UPDATING) {
+        ctx->updating_use_stale = 1;
+    }
+
     cache = conf->shm_zone->data;
     ngx_shmtx_lock(&cache->shpool->mutex);
     /* The data are filled in the ctx->cache_content */
@@ -553,6 +557,10 @@ ngx_http_tcache_header_filter(ngx_http_request_t *r)
     ngx_http_tcache_loc_conf_t    *conf;
 
     conf = ngx_http_get_module_loc_conf(r, ngx_http_tcache_module);
+
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
+                   "tcache header filter \"%V\", status=%ui",
+                   &r->uri, r->headers_out.status);
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_tcache_module);
     if (ctx == NULL) {

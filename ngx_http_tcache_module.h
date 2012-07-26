@@ -109,6 +109,7 @@ struct ngx_http_tcache_ctx_s {
 
     ngx_uint_t                       cache_control;
 
+    unsigned                         updating_use_stale:1;
     unsigned                         can_use_stale:1;
     unsigned                         use_stale_cache:1;
     unsigned                         use_cache:1;

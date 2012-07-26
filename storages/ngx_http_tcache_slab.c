@@ -184,6 +184,18 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
                 goto use_cache;
             }
+
+            if (ctx->updating_use_stale) {
+                if (!tn->updating) {
+                    tn->last_try = now;
+                    tn->updating = 1;
+                    return NGX_DECLINED;
+
+                } else {
+
+                    goto use_cache;
+                }
+            }
         }
 
         return NGX_DECLINED;
@@ -292,26 +304,27 @@ ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 
     tn = ngx_http_tcache_slab_lookup(cache, ctx->key);
     if (tn) {
+        /*TODO: content md5 verification*/
         if ((tn->last_modified > 0)
              && (tn->last_modified == ctx->last_modified)) {
 
-            return NGX_OK;
+            /* update the node information */
+            goto init_node;
+        }
+
+        if (tn->updating && tn->length == 0) {
+            goto copy_payload;
         }
 
         ngx_http_tcache_slab_delete(cache, tn);
     }
-
+   
     tn = ngx_http_tcache_slab_create(cache, ctx);
     if (tn == NULL) {
         return NGX_ERROR;
     }
 
-    ctx->node = tn;
-    tn->status = ctx->status;
-    tn->date = ngx_time();
-    tn->expires = tn->date + ctx->valid;
-    tn->stale =  tn->expires + ctx->grace;
-    tn->last_modified = ctx->last_modified;
+copy_payload:
 
     tn->length = ctx->cache_length;
     tn->payload = ngx_http_tcache_slab_alloc(cache, tn->length);
@@ -320,6 +333,19 @@ ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
     }
 
     (void) ngx_copy(tn->payload, ctx->payload, tn->length); 
+
+init_node:
+
+    ctx->node = tn;
+    tn->status = ctx->status;
+    tn->date = ngx_time();
+    tn->last_try = ngx_time();
+    tn->expires = tn->date + ctx->valid;
+    tn->stale =  tn->expires + ctx->grace;
+    tn->last_modified = ctx->last_modified;
+
+    tn->use_stale = 0;
+    tn->updating = 0;
 
     return NGX_OK;
 }
@@ -337,7 +363,7 @@ ngx_http_tcache_slab_delete(ngx_http_tcache_t *cache,
     sh = cache->sh;
     index = tn->index;
 
-    if (tn->payload) {
+    if (tn->length != 0 && tn->payload) {
         ngx_slab_free_locked(shpool, tn->payload);
     }
 
@@ -376,26 +402,40 @@ ngx_http_tcache_slab_expire(ngx_http_tcache_t *cache)
 
         q = ngx_queue_last(&sh->queue);
 
-        ngx_log_debug1(NGX_LOG_DEBUG_HTTP, cache->log, 0,
-                       "http tcache expire: \"%p\"", q);
-
         index = ngx_queue_data(q, ngx_http_tcache_slab_node_index_t, queue);
         tn = index->data;
 
         if (tn->stale < now) {
             ngx_http_tcache_slab_delete(cache, tn);
             freed++;
-        } else if (tn->expires < now) {
-            /* Free more than 4 records */
-            if (freed < 4) {
-                ngx_http_tcache_slab_delete(cache, tn);
-                freed++;
-            }
-            else {
-                break;
-            }
+        } 
+
+        if (freed >= 4) {
+            break;
         }
-        else {
+    }
+
+    if (freed >= 4) {
+        return;
+    }
+
+    for ( ;; ) {
+
+        if (ngx_queue_empty(&sh->queue)) {
+            return;
+        }
+
+        q = ngx_queue_last(&sh->queue);
+
+        index = ngx_queue_data(q, ngx_http_tcache_slab_node_index_t, queue);
+        tn = index->data;
+
+        if (tn->expires < now) {
+            ngx_http_tcache_slab_delete(cache, tn);
+            freed++;
+        }
+
+        if (freed >= 4) {
             break;
         }
     }
