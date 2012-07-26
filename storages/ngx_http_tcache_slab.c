@@ -182,6 +182,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
                     return NGX_DECLINED;
                 }
 
+                ctx->use_stale_cache = 1;
                 goto use_cache;
             }
 
@@ -193,6 +194,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
                 } else {
 
+                    ctx->use_stale_cache = 1;
                     goto use_cache;
                 }
             }
