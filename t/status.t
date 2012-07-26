@@ -387,3 +387,83 @@ GET /seventh HTTP/1.0
 TCACHE: MISS
 --- response_body
 world
+
+
+=== TEST 15: basic fetch (cache any)
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location /eighth {
+        tcache test;
+        tcache_valid any 1h;
+
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit("500")
+        ';
+    }
+--- request
+GET /eighth HTTP/1.0
+--- error_code: 500
+--- response_headers
+!TCACHE
+!FOO
+
+=== TEST 16: basic fetch (cache any, hit)
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location /eighth {
+        tcache test;
+        tcache_valid any 1h;
+
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit("404")
+        ';
+    }
+--- request
+GET /eighth HTTP/1.0
+--- error_code: 500
+--- response_headers
+!TCACHE
+!FOO
+
+=== TEST 17: basic fetch (cache any, hit)
+--- http_config
+    tcache_shm_zone test;
+
+    upstream backends {
+        server www.taobao.com;
+    }
+
+--- config
+    location /eighth {
+        tcache test;
+        tcache_use_stale http_404 http_500;
+        tcache_valid any 1h;
+
+        add_header TCACHE $tcache_status;
+
+        content_by_lua '
+            ngx.exit("403")
+        ';
+    }
+--- request
+GET /eighth HTTP/1.0
+--- error_code: 500
+--- response_headers
+!TCACHE
+!FOO
