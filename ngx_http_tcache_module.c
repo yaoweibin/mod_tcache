@@ -91,7 +91,6 @@ static ngx_conf_bitmask_t  ngx_http_tcache_use_stale_masks[] = {
     { ngx_string("http_503"), NGX_HTTP_FT_HTTP_503 },
     { ngx_string("http_504"), NGX_HTTP_FT_HTTP_504 },
     { ngx_string("http_404"), NGX_HTTP_FT_HTTP_404 },
-    { ngx_string("http_408"), NGX_HTTP_FT_HTTP_408 },
     { ngx_string("updating"), NGX_HTTP_FT_HTTP_UPDATING },
     { ngx_string("off"),      NGX_HTTP_FT_HTTP_OFF},
     { ngx_null_string, 0 }
@@ -831,10 +830,6 @@ ngx_http_tcache_get_fail_status(ngx_uint_t status)
 
     case 404:
         ft = NGX_HTTP_FT_HTTP_404;
-        break;
-
-    case 408:
-        ft = NGX_HTTP_FT_HTTP_408;
         break;
 
     default:

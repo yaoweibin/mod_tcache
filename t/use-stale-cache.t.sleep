@@ -22,7 +22,7 @@ __DATA__
     location /foo {
         tcache test;
         tcache_valid 200    1s;
-        tcache_grace 60s;
+        tcache_grace 120s;
         add_header TCACHE $tcache_status;
 
         content_by_lua '
@@ -137,7 +137,7 @@ hello
     location /foo {
         tcache test;
         tcache_valid 200    1h;
-        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404;
         add_header TCACHE $tcache_status;
 
         content_by_lua '
@@ -160,7 +160,7 @@ hello
     location /foo {
         tcache test;
         tcache_valid 200    1h;
-        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404;
         add_header TCACHE $tcache_status;
 
         content_by_lua '
@@ -183,7 +183,7 @@ hello
     location /foo {
         tcache test;
         tcache_valid 200    1h;
-        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404;
         add_header TCACHE $tcache_status;
 
         content_by_lua '
@@ -198,7 +198,7 @@ TCACHE: HIT
 hello
 
 
-=== TEST 9: basic fetch (cache hit, 408 can use the use_stale)
+=== TEST 9: basic fetch (cache hit, 408 can use the use_stale, skip)
 --- http_config
     tcache_shm_zone test;
 
@@ -206,11 +206,11 @@ hello
     location /foo {
         tcache test;
         tcache_valid 200    1h;
-        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404;
         add_header TCACHE $tcache_status;
 
         content_by_lua '
-            ngx.exit(408)
+            ngx.exit(404)
         ';
     }
 --- request
@@ -229,7 +229,7 @@ hello
     location /foo {
         tcache test;
         tcache_valid 200    1h;
-        tcache_use_stale  http_500 http_502 http_503 http_504 http_404 http_408;
+        tcache_use_stale  http_500 http_502 http_503 http_504 http_404;
         add_header TCACHE $tcache_status;
 
         content_by_lua '

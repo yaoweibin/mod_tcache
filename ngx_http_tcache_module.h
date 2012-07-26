@@ -45,9 +45,8 @@ typedef struct {
 #define NGX_HTTP_FT_HTTP_503        0x00000040
 #define NGX_HTTP_FT_HTTP_504        0x00000080
 #define NGX_HTTP_FT_HTTP_404        0x00000100
-#define NGX_HTTP_FT_HTTP_408        0x00000200
-#define NGX_HTTP_FT_HTTP_UPDATING   0x00000400
-#define NGX_HTTP_FT_HTTP_OFF        0x00000800
+#define NGX_HTTP_FT_HTTP_UPDATING   0x00000200
+#define NGX_HTTP_FT_HTTP_OFF        0x00000400
 
 
 typedef struct {
