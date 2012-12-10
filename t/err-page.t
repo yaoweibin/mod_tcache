@@ -37,7 +37,7 @@ __DATA__
         content_by_lua '
             ngx.exit(404)
         ';
-        error_page 404 = @err;
+        error_page 404 =200 @err;
     }
 
 --- request
@@ -71,7 +71,7 @@ err
         content_by_lua '
             ngx.exit(404)
         ';
-        error_page 404 = @err;
+        error_page 404 =200 @err;
     }
 
 --- request

@@ -2,7 +2,7 @@
 
 **ngx\_http\_tcache\_module**
 
-add the support memory cache in Nginx
+add the support of memory cache in Nginx
 
 # Examples #
 
