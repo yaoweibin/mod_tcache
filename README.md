@@ -2,7 +2,7 @@
 
 **ngx\_http\_tcache\_module**
 
-add the support of memory cache in Nginx
+add the support of memory cache in Tengine
 
 # Examples #
 
@@ -28,7 +28,7 @@ Default: `none`
 
 Context: `http, server, location`
 
-Specify the shared memory name and it's size. If you don't set the size, the default the memory size is 256M byte.
+Specify the shared memory name and its size. If you don't set the size, the default the memory size is 256M bytes.
 
 
 Syntax: **tcache** `shm_zone_name`
@@ -55,12 +55,12 @@ Default: `none`
 
 Context: `http, server, location`
 
-Sets caching time for different response codes. For example, the following directives
+Set caching time for different response codes. For example, the following directives
 
     tcache_valid 200 302 10m;
     tcache_valid 404      1m;
 
-set 10 minutes of caching for responses with codes 200 and 302, and 1 minute for responses with code 404.
+set 10 minutes of caching time for responses with codes 200 and 302, and 1 minute for responses with code 404.
 
 If only caching time is specified
 
@@ -81,7 +81,7 @@ Default: `none`
 
 Context: `http, server, location`
 
-Defines conditions under which the response will not be taken from a cache. If at least one value of the string parameters is not empty and is not equal to “0” then the response will not be taken from the cache:
+Define conditions under which the response will not be taken from a cache. If at least one value of the string parameters is not empty and is not equal to “0” then the response will not be taken from the cache:
 
     tcache_bypass $cookie_nocache $arg_nocache$arg_comment;
     tcache_bypass $http_pragma    $http_authorization;
@@ -93,7 +93,7 @@ Default: `none`
 
 Context: `http, server, location`
 
-Defines conditions under which the response will not be saved to a cache. If at least one value of the string parameters is not empty and is not equal to “0” then the response will not be saved:
+Define conditions under which the response will not be saved to a cache. If at least one value of the string parameters is not empty and is not equal to “0” then the response will not be saved:
 
     tcache_no_cache $cookie_nocache $arg_nocache$arg_comment;
     tcache_no_cache $http_pragma    $http_authorization;
@@ -134,7 +134,7 @@ Default: `off`
 
 Context: `http, server, location`
 
-If an error occurs while working with the proxied server it is possible to use a stale cached response. This directives determines in which cases it is permitted. The directive’s parameters match the response status code.
+If an error occurs while working with the proxied server it is possible to use a stale cached response. This directive determines in which cases it is permitted. The directive’s parameters match the response status code.
 
 Additionally, the updating parameter permits to use a stale cached response if it is currently being updated. This allows to minimize the number of accesses to proxied servers when updating cached data.
 
@@ -161,7 +161,7 @@ You can hide more response headers (case-insensitive) by means of this directive
     tcache_hide_header X-Foo;
     tcache_hide_header Last-Modified;
 
-Multiple occurrences of this directive are allowed in a single location.
+Multiple occurrences of this directive are allowed in a single location block.
 
 
 Syntax: **tcache_pass_header** `header_name`
@@ -184,7 +184,7 @@ Default: `1M`
 
 Context: `http, server, location`
 
-Specify the maximum size of the cached response. If it's large than this size, the response will not be cached.
+Specify the maximum size of the cached response. If it's larger than this size, the response will not be cached.
 
 
 Syntax: **tcache_store_buffer_size** `size`
