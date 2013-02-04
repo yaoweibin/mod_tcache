@@ -73,7 +73,6 @@ typedef struct {
 
     size_t                           max_size;
     size_t                           default_buffer_size;
-
 } ngx_http_tcache_loc_conf_t;
 
 
@@ -167,8 +166,5 @@ struct ngx_http_tcache_s {
 };
 
 extern ngx_module_t  ngx_http_tcache_module;
-
-ngx_buf_t * buffer_append(ngx_buf_t *b, u_char *s, size_t len,
-    ngx_pool_t *pool);
 
 #endif

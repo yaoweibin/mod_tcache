@@ -28,7 +28,7 @@ Default: `none`
 
 Context: `http, server, location`
 
-Specify the shared memory name and its size. If you don't set the size, the default the memory size is 256M bytes.
+Specify the shared memory name and its size. If you don't set the size, by default the memory size is 256M bytes.
 
 
 Syntax: **tcache** `shm_zone_name`
