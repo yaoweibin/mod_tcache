@@ -25,3 +25,6 @@ ngx_http_tcache_storage_t tcache_freelist = {
     NULL,
     NULL,
 };
+
+
+/* TODO: the freelist mode comes from Varnish */

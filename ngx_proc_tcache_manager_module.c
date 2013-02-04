@@ -93,7 +93,6 @@ static char *
 ngx_proc_tcache_manager(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
     ngx_proc_tcache_manager_conf_t    *ptmcf = conf;
-
     ngx_str_t                         *value;
 
     value = cf->args->elts;

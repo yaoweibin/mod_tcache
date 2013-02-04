@@ -151,7 +151,7 @@ ngx_http_tcache_slab_get(ngx_http_tcache_t *cache,
 
                 if (tn->use_stale) {
 
-                    /*TODO: try interval*/
+                    /* TODO: try interval */
                     if ((now - tn->last_try) > 3) {
 
                         tn->last_try = now;
@@ -227,6 +227,7 @@ use_cache:
     ctx->valid = tn->expires - now;
     ctx->age = now - tn->date;
 
+    /* TODO: move it out of the lock */
     buf = ngx_create_temp_buf(ctx->pool, tn->length);
     if (buf == NULL) {
         return NGX_ERROR;
@@ -289,8 +290,8 @@ ngx_http_tcache_slab_create(ngx_http_tcache_t *cache,
 static u_char *
 ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache, size_t size)
 {
-    u_char                          *payload;
-    ngx_slab_pool_t                 *shpool;
+    u_char           *payload;
+    ngx_slab_pool_t  *shpool;
 
     payload = NULL;
     shpool = cache->shpool;
@@ -320,11 +321,12 @@ ngx_http_tcache_slab_alloc(ngx_http_tcache_t *cache, size_t size)
 static ngx_int_t
 ngx_http_tcache_slab_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 {
-    ngx_http_tcache_node_t            *tn;
+    ngx_http_tcache_node_t  *tn;
 
     tn = ngx_http_tcache_slab_lookup(cache, ctx->key);
     if (tn) {
-        /*TODO: content md5 verification*/
+
+        /* TODO: content md5 verification */
         if ((tn->last_modified > 0)
              && (tn->last_modified == ctx->last_modified)) {
 
@@ -499,7 +501,7 @@ ngx_http_tcache_slab_force_expire(ngx_http_tcache_t *cache)
 static void
 ngx_http_tcache_slab_cleanup(ngx_http_tcache_t *cache)
 {
-    /* Nginx should take care of the shared memory */
+    /* Nginx should take care of the shared memory. */
 }
 
 
