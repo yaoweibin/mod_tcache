@@ -2,7 +2,7 @@ ngx_feature_name=
 ngx_feature_run=no
 ngx_feature_incs="#include <libmdb_c.hpp>"
 ngx_feature_test="mdb_t mdb;"
-with_mdb="no"
+with_mdb="yes"
 
 if [ $with_mdb = yes ]; then
 

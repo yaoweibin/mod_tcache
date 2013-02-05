@@ -1,15 +1,11 @@
 
-#ifndef __STDC_FORMAT_MACROS
-#define __STDC_FORMAT_MACROS
-#endif
-
-
 #include "libmdb_c.hpp"
 #include "ngx_http_tcache_module.h"
 
 
-#define MAX_KEY_SIZE     1024
-#define MAX_VALUE_SIZE   (1<<22)
+#define MAX_KEY_SIZE      1024   /* 1K */
+#define MAX_VALUE_SIZE   (1<<20) /* 1M */
+#define MIN_MDB_SIZE     (1<<28) /* 256M */
 
 
 typedef struct {
@@ -20,12 +16,14 @@ typedef struct {
     uint32_t           value_size;
     int                action_type;
     int                action_mode;
+    char              *name; 
     char              *path; 
     char              *log; 
     mdb_t              db;
 } ngx_mdb_t;
 
 
+static ngx_int_t ngx_http_tcache_mdb_name(ngx_http_tcache_t *cache);
 static ngx_int_t ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache);
 static ngx_int_t ngx_http_tcache_mdb_get(
     ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx, ngx_flag_t lookup);
@@ -53,15 +51,15 @@ ngx_http_tcache_storage_t tcache_mdb = {
 static ngx_int_t
 ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
 {
-    size_t                    len;
-    u_char                   *name, *path;
-    ngx_mdb_t                *mdb;
-    mdb_param_t               params;
+    ngx_mdb_t    *mdb;
+    mdb_param_t   params;
 
     mdb = ngx_pcalloc(cache->pool, sizeof(ngx_mdb_t));
     if (mdb == NULL) {
         return NGX_ERROR;
     }
+
+    cache->mdb = mdb;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, cache->log, 0, "tcache mdb init");
 
@@ -69,33 +67,15 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
     mdb_log_file(mdb->log);
     mdb_log_level("error");
 
-    ngx_memzero(&params, sizeof(mdb_param_t));
-
-    len = sizeof("libmdb_") - 1 + cache->name.len;
-
-    name = ngx_pcalloc(cache->pool, len + 1);
-    if (name == NULL) {
+    if (ngx_http_tcache_mdb_name(cache) == NGX_ERROR) {
         return NGX_ERROR;
     }
-
-    ngx_snprintf(name, len, "%s%V", (u_char *) "libmdb_", &cache->name);
-
-    len += sizeof("/dev/shm/") - 1;
-
-    path = ngx_pcalloc(cache->pool, len + 1);
-    if (path == NULL) {
-        return NGX_ERROR;
-    }
-
-    ngx_snprintf(path, len, "/dev/shm/%s", name);
-
-    mdb->path = (char *)path;
 
 #if NGX_LINUX && 0
     ngx_fd_t                  fd;
     struct flock              fl;
 
-    fd = open((char *)path, O_RDWR);
+    fd = open((char *)mdb->path, O_RDWR);
     if (fd > 0) {
         fl.l_start = 0;
         fl.l_len = 0;
@@ -107,27 +87,64 @@ ngx_http_tcache_mdb_init(ngx_http_tcache_t *cache)
         if (fcntl(fd, F_SETLK, &fl) == -1) {
             ngx_log_error(NGX_LOG_EMERG, cache->log, 0,
                           "tcache error: the shared memory \"%s\" is using",
-                          name);
+                          mdb->name);
 
             return NGX_ERROR;
         }
     }
-#endif
 
     ngx_delete_file(mdb->path);
+#endif
+
+    ngx_memzero(&params, sizeof(mdb_param_t));
 
     params.mdb_type = "mdb_shm";
-    params.mdb_path = (char *) name;
-    params.size = cache->size;
+    params.mdb_path = mdb->name;
+    /* cache->size must be larger than 160M */
+    params.size = cache->size > MIN_MDB_SIZE ? cache->size : MIN_MDB_SIZE;
 
     mdb->db = mdb_init(&params);
     mdb->area = 0;
-
     mdb->quota = cache->size >> 1;
 
     mdb_set_quota(mdb->db, mdb->area, mdb->quota);
 
-    cache->mdb = mdb;
+    return NGX_OK;
+}
+
+
+static ngx_int_t
+ngx_http_tcache_mdb_name(ngx_http_tcache_t *cache)
+{
+    size_t        len;
+    u_char       *name, *path;
+    ngx_mdb_t    *mdb;
+
+    mdb = cache->mdb;
+    if (mdb == NULL) {
+        return NGX_ERROR;
+    }
+
+    len = sizeof("libmdb_") - 1 + cache->name.len;
+
+    name = ngx_pnalloc(cache->pool, len + 1);
+    if (name == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_snprintf(name, len, "%s%V%Z", (u_char *) "libmdb_", &cache->name);
+
+    len += sizeof("/dev/shm/") - 1;
+
+    path = ngx_pnalloc(cache->pool, len + 1);
+    if (path == NULL) {
+        return NGX_ERROR;
+    }
+
+    ngx_snprintf(path, len, "/dev/shm/%s%Z", name);
+
+    mdb->name = (char *) name;
+    mdb->path = (char *) path;
 
     return NGX_OK;
 }
@@ -137,11 +154,11 @@ static ngx_int_t
 ngx_http_tcache_mdb_get(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx,
     ngx_flag_t lookup)
 {
-    int                     expire;
-    ngx_buf_t              *buf;
-    ngx_int_t               rc;
-    ngx_mdb_t              *mdb;
-    data_entry_t            key, value;
+    int           expire;
+    ngx_buf_t    *buf;
+    ngx_int_t     rc;
+    ngx_mdb_t    *mdb;
+    data_entry_t  key, value;
 
     key.data = (char *) ctx->key;
     key.size = NGX_HTTP_CACHE_KEY_LEN;
@@ -217,8 +234,8 @@ ngx_http_tcache_mdb_put(ngx_http_tcache_t *cache, ngx_http_tcache_ctx_t *ctx)
 static void
 ngx_http_tcache_mdb_delete(ngx_http_tcache_t *cache, ngx_http_tcache_node_t *tn)
 {
-    ngx_mdb_t              *mdb;
-    data_entry_t            key;
+    ngx_mdb_t    *mdb;
+    data_entry_t  key;
 
     mdb = cache->mdb;
 
@@ -250,9 +267,11 @@ ngx_http_tcache_mdb_cleanup(ngx_http_tcache_t *cache)
 
     mdb = cache->mdb;
 
-    if (mdb->path) {
+#if 0
+    if (mdb && mdb->path) {
         ngx_delete_file(mdb->path);
     }
+#endif
 
     if (mdb && mdb->db) {
         mdb_destroy(mdb->db);
